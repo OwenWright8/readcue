@@ -8,6 +8,7 @@ import re
 import threading
 from collections.abc import Callable, Sequence
 from datetime import date, timedelta
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from flask import (
@@ -23,16 +24,17 @@ from flask import (
 )
 
 from . import __version__, ocr
+from .books import book_path
 from .config import Config
 from .db import Database
-from .errors import NotFoundError, ReadcueError
-from .extract import extract_text, normalize_text
+from .detect import detect_chapters
+from .errors import NotFoundError, NotifyError, ReadcueError
+from .extract import MAX_TEXT_CHARS, extract_text, normalize_text
 from .llm import make_provider
 from .llm.base import LLMProvider
-from .notify import PushoverNotifier
+from .notify import DEVICES_SETTING, PushoverNotifier, notifier_for
 from .syllabus import extract_schedule
 
-MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 MAX_PASTED_BYTES = 20 * 1024 * 1024  # non-file form fields, i.e. pasted text
 
 CONTENT_SECURITY_POLICY = (
@@ -77,18 +79,21 @@ def create_app(
     db: Database,
     *,
     wake: threading.Event | None = None,
+    wake_books: threading.Event | None = None,
     provider_factory: Callable[[], LLMProvider] | None = None,
     notifier: PushoverNotifier | None = None,
     today_fn: Callable[[], date] = date.today,
     threads: Sequence[threading.Thread] = (),
 ) -> Flask:
     app = Flask(__name__)
-    app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
+    max_upload = cfg.max_upload_mb * 1024 * 1024
+    app.config["MAX_CONTENT_LENGTH"] = max_upload
     app.config["MAX_FORM_MEMORY_SIZE"] = MAX_PASTED_BYTES
     app.secret_key = os.urandom(32)  # only signs flash messages; a restart just drops pending ones
     wake = wake or threading.Event()
+    wake_books = wake_books or threading.Event()
     provider_factory = provider_factory or (lambda: make_provider(cfg))
-    notifier = notifier or PushoverNotifier(cfg)
+    notifier = notifier or notifier_for(cfg, db)
 
     app.jinja_env.globals["app_version"] = __version__
     # A reverse proxy may rewrite Host, so the public address from READCUE_BASE_URL also counts as same-origin.
@@ -158,7 +163,7 @@ def create_app(
 
     @app.errorhandler(413)
     def too_large(_):
-        flash(f"That file is too large (limit {MAX_UPLOAD_BYTES // 1024 // 1024} MB).", "error")
+        flash(f"That upload is too large (limit {cfg.max_upload_mb} MB).", "error")
         return redirect(request.referrer or url_for("index"))
 
     @app.get("/healthz")
@@ -177,11 +182,19 @@ def create_app(
     @app.get("/")
     def index():
         readings = db.list_readings()
+        books = db.list_books()
         today, sum_days = today_fn(), cfg.summarize_days_before
         groups = []
         for course in db.list_courses():
             mine = [r for r in readings if r.course_id == course.id]
-            groups.append({"course": course, "readings": mine, "ready": sum(r.summary_ready for r in mine)})
+            groups.append(
+                {
+                    "course": course,
+                    "readings": mine,
+                    "ready": sum(r.summary_ready for r in mine),
+                    "books": [b for b in books if b.course_id == course.id],
+                }
+            )
         stages = [r.stage(today, sum_days) for r in readings]
         stats = {
             "due_soon": sum(1 for r in readings if 0 <= (r.due - today).days <= 7),
@@ -195,7 +208,7 @@ def create_app(
             "index.html",
             groups=groups,
             stats=stats,
-            busy=any(s in ("queued", "running") for s in stages),
+            busy=any(s in ("queued", "running") for s in stages) or any(b.working for b in books),
             today=today,
             lead=timedelta(days=cfg.notify_days_before),
             sum_days=sum_days,
@@ -378,12 +391,109 @@ def create_app(
         flash("Chapter and its summary deleted.", "ok")
         return redirect(url_for("index"))
 
+    # -- whole textbooks ---------------------------------------------------------------------
+
+    @app.get("/courses/<int:course_id>/books/new")
+    def book_form(course_id: int):
+        return render_template("book_form.html", course=db.get_course(course_id), max_mb=cfg.max_upload_mb)
+
+    @app.post("/courses/<int:course_id>/books")
+    def book_add(course_id: int):
+        course = db.get_course(course_id)
+        upload = request.files.get("file")
+        if not upload or not upload.filename:
+            raise ReadcueError("Choose the textbook PDF.")
+        if not upload.filename.lower().endswith(".pdf"):
+            raise ReadcueError("The textbook has to be a PDF. (For separate chapter files, use Add chapter.)")
+        book_id = db.add_book(course.id, Path(upload.filename).name)
+        path = book_path(cfg, book_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        upload.save(path)  # streamed to disk; a book can be hundreds of MB
+        with path.open("rb") as f:
+            looks_like_pdf = f.read(5) == b"%PDF-"
+        if not looks_like_pdf:
+            path.unlink(missing_ok=True)
+            db.delete_book(book_id)
+            raise ReadcueError("That file doesn't look like a PDF.")
+        wake_books.set()
+        return redirect(url_for("book_page", book_id=book_id))
+
+    @app.get("/books/<int:book_id>")
+    def book_page(book_id: int):
+        book = db.get_book(book_id)
+        rows = []
+        if book.status == "ready":
+            pages = db.get_book_page_texts(book.id, book.page_count)
+            readings = {r.chapter: r for r in db.list_readings() if r.course_id == book.course_id}
+            found = detect_chapters(
+                pages, {n: r.title for n, r in readings.items()}, db.get_book_outline(book.id)
+            )
+            rows = [{"found": f, "reading": readings[f.number]} for f in found]
+        return render_template("book.html", book=book, rows=rows, today=today_fn())
+
+    @app.post("/books/<int:book_id>/split")
+    def book_split(book_id: int):
+        book = db.get_book(book_id)
+        pages = db.get_book_page_texts(book.id, book.page_count)
+        chapters = []  # validated first, so a bad row doesn't leave the rest half-created
+        for i in range(_int(request.form.get("count"), "Row count")):
+            if not request.form.get(f"include-{i}"):
+                continue
+            number = _int(request.form.get(f"number-{i}"), "Chapter")
+            start = _int(request.form.get(f"start-{i}"), f"Chapter {number} start page")
+            end = _int(request.form.get(f"end-{i}"), f"Chapter {number} end page")
+            if not 1 <= start <= end <= book.page_count:
+                raise ReadcueError(
+                    f"Chapter {number}: pages {start} to {end} don't fit a {book.page_count}-page book."
+                )
+            text = normalize_text("\n\n".join(pages[start - 1 : end]))
+            if not text:
+                raise ReadcueError(f"Chapter {number}: pages {start} to {end} have no readable text.")
+            if len(text) > MAX_TEXT_CHARS:
+                raise ReadcueError(
+                    f"Chapter {number}: pages {start} to {end} are too long. Check the end page."
+                )
+            chapters.append((number, start, end, text))
+        if not chapters:
+            raise ReadcueError("Tick at least one chapter to create.")
+        for number, start, end, text in chapters:
+            reading = db.find_reading(book.course_id, number)
+            db.save_chapter(
+                book.course_id,
+                number,
+                reading.title if reading else "",
+                text,
+                f"{book.name} pp. {start}-{end}",
+            )
+        wake.set()
+        flash(f"Created {len(chapters)} chapter{'s' if len(chapters) != 1 else ''} from {book.name}.", "ok")
+        return redirect(url_for("index"))
+
+    @app.post("/books/<int:book_id>/retry")
+    def book_retry(book_id: int):
+        db.get_book(book_id)
+        db.requeue_book(book_id)
+        wake_books.set()
+        return redirect(url_for("book_page", book_id=book_id))
+
+    @app.post("/books/<int:book_id>/delete")
+    def book_delete(book_id: int):
+        db.get_book(book_id)
+        book_path(cfg, book_id).unlink(missing_ok=True)
+        db.delete_book(book_id)
+        flash("Textbook deleted. Chapters already created from it are kept.", "ok")
+        return redirect(url_for("index"))
+
     # -- settings --------------------------------------------------------------------------
 
     @app.get("/settings")
     def settings():
         return render_template(
-            "settings.html", cfg=cfg, pushover_ready=notifier.configured, ocr_ready=ocr.available()
+            "settings.html",
+            cfg=cfg,
+            pushover_ready=notifier.configured,
+            devices=notifier.selected_devices,
+            ocr_ready=ocr.available(),
         )
 
     @app.post("/settings/test-llm")
@@ -391,6 +501,48 @@ def create_app(
         provider = provider_factory()
         reply = provider.complete("You are a connectivity check.", "Reply with the single word OK.")
         flash(f"{provider.label} responded: {reply.strip()[:80]}", "ok")
+        return redirect(url_for("settings"))
+
+    @app.get("/settings/devices")
+    def devices_page():
+        available, problem = [], ""
+        if notifier.configured:
+            try:
+                available = notifier.list_devices()
+            except NotifyError as e:
+                problem = str(e)
+        selected = notifier.selected_devices
+        return render_template(
+            "devices.html",
+            configured=notifier.configured,
+            available=available,
+            selected=selected,
+            missing=[name for name in selected if available and name not in available],
+            problem=problem,
+        )
+
+    @app.post("/settings/devices")
+    def devices_save():
+        if request.form.get("mode") == "some":
+            chosen = request.form.getlist("device")
+            if not chosen:
+                raise ReadcueError("Tick at least one device, or choose all devices.")
+            known = notifier.list_devices()
+            for name in chosen:
+                if name not in known:
+                    raise ReadcueError(f"Pushover has no device called {name}.")
+            value = ",".join(chosen)
+        else:
+            value = ""  # every device
+        db.set_setting(DEVICES_SETTING, value)
+        where = value.replace(",", ", ") or "all your devices"
+        if request.form.get("test"):
+            notifier.send(
+                "readcue test", f"This came to: {where}.", url=cfg.link("/"), url_title="Open readcue"
+            )
+            flash(f"Saved. A test notification went to {where}.", "ok")
+        else:
+            flash(f"Notifications will go to {where}.", "ok")
         return redirect(url_for("settings"))
 
     @app.post("/settings/test-push")

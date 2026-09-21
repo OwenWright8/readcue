@@ -47,6 +47,7 @@ services:
       READCUE_NOTIFY_TIME: ${READCUE_NOTIFY_TIME:-}
       READCUE_CHECK_INTERVAL: ${READCUE_CHECK_INTERVAL:-}
       READCUE_OCR_LANG: ${READCUE_OCR_LANG:-}
+      READCUE_MAX_UPLOAD_MB: ${READCUE_MAX_UPLOAD_MB:-}
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     stop_grace_period: 20s

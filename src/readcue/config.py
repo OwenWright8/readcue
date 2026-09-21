@@ -40,6 +40,7 @@ class Config:
     notify_time: time = time(8, 0)
     check_interval_seconds: int = 60
     summarize_days_before: int = 3  # don't spend tokens on a chapter until it is due within this many days
+    max_upload_mb: int = 1024  # per request; a whole scanned textbook can be several hundred MB
     ocr_lang: str = "eng"  # tesseract language code(s), e.g. "eng+spa"
 
     data_dir: Path = Path("data")
@@ -107,6 +108,7 @@ class Config:
         number("READCUE_NOTIFY_DAYS_BEFORE", "notify_days_before")
         number("READCUE_CHECK_INTERVAL", "check_interval_seconds")
         number("READCUE_SUMMARIZE_DAYS_BEFORE", "summarize_days_before")
+        number("READCUE_MAX_UPLOAD_MB", "max_upload_mb")
 
         if (raw := get("READCUE_NOTIFY_TIME")) is not None:
             try:
@@ -131,6 +133,8 @@ class Config:
             raise ConfigError("READCUE_SUMMARIZE_DAYS_BEFORE can't be negative")
         if not re.fullmatch(r"[A-Za-z0-9_]+(\+[A-Za-z0-9_]+)*", cfg.ocr_lang):
             raise ConfigError(f"READCUE_OCR_LANG must look like eng or eng+spa, got {cfg.ocr_lang!r}")
+        if cfg.max_upload_mb < 1:
+            raise ConfigError("READCUE_MAX_UPLOAD_MB must be at least 1")
         if cfg.check_interval_seconds < 1:
             raise ConfigError("READCUE_CHECK_INTERVAL must be at least 1 second")
         return cfg

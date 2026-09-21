@@ -59,6 +59,7 @@
     </div>
     <div class="actions">
       <a class="btn btn-sm" href="{{ url_for('syllabus_form', course_id=course.id) }}">{{ icon('file-text', 15) }} Import syllabus</a>
+      <a class="btn btn-sm" href="{{ url_for('book_form', course_id=course.id) }}">{{ icon('book-open', 15) }} Add textbook</a>
       <a class="btn btn-sm btn-primary" href="{{ url_for('chapter_form', course_id=course.id) }}">{{ icon('upload', 15) }} Add chapter</a>
       <details class="menu">
         <summary class="btn btn-sm btn-ghost btn-icon" title="Summary settings" aria-label="Summary settings">{{ icon('sliders', 17) }}</summary>
@@ -81,6 +82,14 @@
       </form>
     </div>
   </div>
+
+  {% for book in g.books %}
+  <div class="callout">{{ icon('book-open', 18) }}<span><strong>{{ book.name }}</strong>
+    {% if book.status == 'ready' %}· {{ book.page_count }} pages read. <a href="{{ url_for('book_page', book_id=book.id) }}">Split into chapters</a>
+    {% elif book.status == 'error' %}· couldn't be read. <a href="{{ url_for('book_page', book_id=book.id) }}">Details</a>
+    {% else %}· reading{% if book.page_count %}, page {{ book.pages_done }} of {{ book.page_count }}{% endif %}. <a href="{{ url_for('book_page', book_id=book.id) }}">Progress</a>{% endif %}
+  </span></div>
+  {% endfor %}
 
   {% set to_add = g.readings|selectattr('chapter_id', 'none')|list %}
   {% if g.readings and to_add|length == g.readings|length %}

@@ -85,12 +85,13 @@ Everything is an environment variable, normally set in `.env`.
 | `OLLAMA_TIMEOUT` | `900` | Seconds to wait for a response. |
 | `OLLAMA_API_KEY` | | Bearer token, if your Ollama sits behind an authenticating proxy. |
 | `PUSHOVER_APP_TOKEN`, `PUSHOVER_USER_KEY` | | Both are needed for notifications. |
-| `PUSHOVER_DEVICE` | all | Limit notifications to one device. |
+| `PUSHOVER_DEVICE` | all | Default device name(s), comma-separated, used until you choose in Settings → Choose devices (which overrides it). |
 | `PUSHOVER_PRIORITY` | `0` | `-2` to `1`. |
 | `READCUE_SUMMARIZE_DAYS_BEFORE` | `3` | Scheduled summaries are written this many days before the due date. |
 | `READCUE_NOTIFY_DAYS_BEFORE` | `1` | The reminder goes out this many days before the due date. |
 | `READCUE_NOTIFY_TIME` | `08:00` | ...from this local time. |
 | `READCUE_CHECK_INTERVAL` | `60` | Seconds between reminder checks. |
+| `READCUE_MAX_UPLOAD_MB` | `1024` | Largest upload per request; a whole scanned textbook can be several hundred MB. Raise your proxy's limit to match. |
 | `READCUE_OCR_LANG` | `eng` | Tesseract language(s), e.g. `eng+spa`. The published image has English only; others need a source build with `EXTRA_OCR_PACKAGES`. |
 | `TZ` | `UTC` | Your timezone, e.g. `America/New_York`. Reminder times and due dates use it. |
 | `READCUE_BASE_URL` | | Public address, used for links in notifications and to accept a reverse proxy's Origin. |
@@ -134,7 +135,7 @@ proxy to `127.0.0.1:8080`. Uploads (especially OCR'd scans) can take minutes, so
 ```
 readcue.example.com {
     request_body {
-        max_size 100MB
+        max_size 1GB
     }
     reverse_proxy 127.0.0.1:8080 {
         transport http {
@@ -151,7 +152,7 @@ location / {
     proxy_pass http://127.0.0.1:8080;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto $scheme;
-    client_max_body_size 100m;
+    client_max_body_size 1g;
     proxy_read_timeout 900s;
 }
 ```
@@ -212,6 +213,8 @@ Database changes are applied automatically at startup. Take a backup first, and 
 | Summaries fail: "Couldn't reach Ollama" | Check `OLLAMA_HOST` (see the three cases in `.env.example`); pull the model with `ollama pull`. |
 | No notifications | Settings shows whether Pushover is configured; use **Send test notification**. |
 | Forms return "403 Forbidden" behind a proxy | Set `READCUE_BASE_URL` to the public address. |
+| "That upload is too large" | Raise `READCUE_MAX_UPLOAD_MB`, and your proxy's body-size limit (nginx `client_max_body_size`). |
+| A textbook stays on "Reading…" | Scanned pages take a few seconds each; check `docker compose logs`. It resumes after a restart. |
 | Upload times out on a scanned book | Give a page range; raise the proxy's read timeout. OCR is capped at 150 pages per upload. |
 | "OCR isn't installed" | Only happens outside the Docker image; install `tesseract-ocr` and `poppler-utils`. |
 | Reminders at the wrong hour | Set `TZ` (and `READCUE_NOTIFY_TIME`). |

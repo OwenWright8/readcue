@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ book.name }} · readcue{% endblock %}
+{% block head %}{% if book.working %}<meta http-equiv="refresh" content="5">{% endif %}{% endblock %}
+{% block content %}
+<div style="max-width:900px;margin-inline:auto">
+  <a class="crumb" href="{{ url_for('index') }}">{{ icon('arrow-left', 16) }} Dashboard</a>
+  <div class="page-head" style="margin-bottom:20px">
+    <div>
+      <h3>{{ book.course_name }}</h3>
+      <h1 style="margin-top:4px">{{ book.name }}</h1>
+      {% if book.page_count %}<p class="lede">{{ book.page_count }} pages{% if book.scanned_pages %} · {{ book.scanned_pages }} scanned{% endif %}</p>{% endif %}
+    </div>
+  </div>
+
+  {% if book.working %}
+  <div class="card state busy">
+    <span class="state-icon"><span class="spinner"></span></span>
+    <div style="flex:1">
+      <h2>{{ 'Waiting to start…' if book.status == 'queued' else 'Reading the book…' }}</h2>
+      {% if book.page_count %}
+        <p class="muted">Page {{ book.pages_done }} of {{ book.page_count }}{% if book.scanned_pages %}; {{ book.scanned_pages }} scanned pages are being read with OCR{% endif %}.</p>
+        <div class="progress wide"><i style="width: {{ book.percent }}%"></i></div>
+      {% endif %}
+      <p class="muted" style="margin-top:10px">This page refreshes by itself, and you can leave it: the reading carries on in the background, and picks up where it left off if the app restarts.</p>
+    </div>
+  </div>
+
+  {% elif book.status == 'error' %}
+  <div class="card state error">
+    <span class="state-icon">{{ icon('alert-circle', 22) }}</span>
+    <div><h2>Couldn't read the textbook</h2><p class="muted">{{ book.error }}</p></div>
+  </div>
+  <div class="actions" style="margin-top:20px">
+    <form method="post" action="{{ url_for('book_retry', book_id=book.id) }}"><button class="btn btn-primary">{{ icon('refresh', 15) }} Retry</button></form>
+    <form method="post" action="{{ url_for('book_delete', book_id=book.id) }}" data-confirm="Delete this textbook?"><button class="btn btn-ghost btn-danger">{{ icon('trash', 15) }} Delete</button></form>
+  </div>
+
+  {% else %}
+  {% set located = rows|selectattr('found.start')|list %}
+  {% if book.note %}<div class="callout" style="margin:0 0 16px">{{ icon('alert-triangle', 18) }}<span>{{ book.note }}</span></div>{% endif %}
+  {% if not rows %}
+  <div class="card state"><span class="state-icon">{{ icon('calendar', 22) }}</span>
+    <div><h2>No chapters on the schedule yet</h2><p class="muted">Import this course's syllabus first, so readcue knows which chapters to look for.</p></div></div>
+  {% else %}
+  <div class="callout" style="margin:0 0 16px">{{ icon('check-circle', 18) }}<span>Found the opening page of <strong>{{ located|length }} of {{ rows|length }}</strong> scheduled chapters. Each chapter runs to the page before the next one starts. Check the page ranges, fix anything that's off, and create the chapters.</span></div>
+
+  <form method="post" action="{{ url_for('book_split', book_id=book.id) }}">
+    <input type="hidden" name="count" value="{{ rows|length }}">
+    <section class="card">
+      <div class="split head"><span></span><span>Chapter</span><span>First page</span><span>Last page</span></div>
+      {% for row in rows %}
+      {% set f = row.found %}
+      {% set exists = row.reading.chapter_id is not none %}
+      <div class="split">
+        <input type="checkbox" name="include-{{ loop.index0 }}" {{ 'checked' if f.start and not exists }} aria-label="Create chapter {{ f.number }}">
+        <div>
+          <input type="hidden" name="number-{{ loop.index0 }}" value="{{ f.number }}">
+          <div class="reading-title"><span class="ch">Ch. {{ f.number }}</span>{{ f.title or 'Untitled chapter' }}
+            {% if f.source == 'bookmark' %}<span class="chip">from bookmarks</span>{% elif f.source == 'heading' %}<span class="chip">chapter heading</span>{% elif f.source == 'title' %}<span class="chip">matched title</span>{% endif %}
+            {% if exists %}<span class="chip">already added: will be replaced</span>{% endif %}
+          </div>
+          <div class="reading-sub">Due {{ row.reading.due|nice_date }}{% if f.pages %} · {{ f.pages }} pages{% endif %}{% if f.snippet %} · “{{ f.snippet }}”{% endif %}</div>
+          {% for w in f.warnings %}<div class="reading-sub" style="color:var(--warn)">{{ icon('alert-triangle', 13) }} {{ w }}</div>{% endfor %}
+        </div>
+        <input type="number" name="start-{{ loop.index0 }}" value="{{ f.start or '' }}" min="1" max="{{ book.page_count }}" placeholder="page" aria-label="First page of chapter {{ f.number }}">
+        <input type="number" name="end-{{ loop.index0 }}" value="{{ f.end or '' }}" min="1" max="{{ book.page_count }}" placeholder="page" aria-label="Last page of chapter {{ f.number }}">
+      </div>
+      {% endfor %}
+    </section>
+    <p class="hint">Page numbers here are the PDF's own page numbers (page 1 is the cover), not the numbers printed on the pages.</p>
+    <div class="actions" style="margin-top:20px">
+      <button class="btn btn-primary" type="submit">{{ icon('check', 16) }} Create chapters</button>
+    </div>
+  </form>
+  {% endif %}
+
+  <div class="actions" style="margin-top:28px">
+    <form method="post" action="{{ url_for('book_delete', book_id=book.id) }}" data-confirm="Delete this textbook? Chapters already created from it are kept.">
+      <button class="btn btn-ghost btn-danger">{{ icon('trash', 15) }} Delete textbook</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

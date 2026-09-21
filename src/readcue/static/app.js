@@ -23,6 +23,14 @@
     if (open) row.querySelector(".reading-edit input").focus();
   });
 
+  // Ticking a device means "only the ones I pick".
+  document.querySelectorAll(".device input").forEach(function (box) {
+    box.addEventListener("change", function () {
+      var radio = document.getElementById("mode-some");
+      if (radio) radio.checked = true;
+    });
+  });
+
   // Confirm dialogs: <form data-confirm="..."> or <button data-confirm="...">.
   document.addEventListener("submit", function (event) {
     var message = (event.submitter && event.submitter.dataset.confirm) || event.target.dataset.confirm;

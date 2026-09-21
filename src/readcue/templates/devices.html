@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Notification devices · readcue{% endblock %}
+{% block content %}
+<div style="max-width:720px;margin-inline:auto">
+  <a class="crumb" href="{{ url_for('settings') }}">{{ icon('arrow-left', 16) }} Settings</a>
+  <div class="page-head" style="margin-bottom:20px">
+    <div>
+      <h1>Notification devices</h1>
+      <p class="lede">Choose which of your Pushover devices receive readcue's notifications.</p>
+    </div>
+  </div>
+
+  {% if not configured %}
+  <div class="card state"><span class="state-icon">{{ icon('bell', 22) }}</span>
+    <div><h2>Pushover isn't set up yet</h2><p class="muted">Set <code>PUSHOVER_APP_TOKEN</code> and <code>PUSHOVER_USER_KEY</code>, then come back to pick devices.</p></div></div>
+
+  {% elif problem %}
+  <div class="card state error"><span class="state-icon">{{ icon('alert-circle', 22) }}</span>
+    <div><h2>Couldn't load your devices</h2><p class="muted">{{ problem }}</p></div></div>
+  <div class="actions" style="margin-top:20px"><a class="btn" href="{{ url_for('devices_page') }}">{{ icon('refresh', 15) }} Try again</a></div>
+
+  {% else %}
+  <form method="post" action="{{ url_for('devices_save') }}" class="form-stack">
+    <div class="choice-grid">
+      <label class="choice">
+        <input type="radio" name="mode" value="all" {{ 'checked' if not selected }}>
+        <span class="choice-body"><span class="top"><span class="icon-wrap">{{ icon('bell', 18) }}</span>All my devices</span>
+          <p>Every device on your Pushover account gets each notification.</p></span>
+      </label>
+      <label class="choice">
+        <input type="radio" name="mode" value="some" id="mode-some" {{ 'checked' if selected }}>
+        <span class="choice-body"><span class="top"><span class="icon-wrap">{{ icon('check', 18) }}</span>Only the ones I pick</span>
+          <p>Send to just the devices ticked below, say your phone but not your tablet.</p></span>
+      </label>
+    </div>
+
+    <div>
+      <span class="field-label">Your devices ({{ available|length }})</span>
+      {% if available %}
+      <div class="devices">
+        {% for name in available %}
+        <label class="device"><input type="checkbox" name="device" value="{{ name }}" {{ 'checked' if name in selected }}><span>{{ name }}</span></label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="muted">No devices are registered on this Pushover account yet. Install the Pushover app on a device and log in.</p>
+      {% endif %}
+      {% for name in missing %}
+      <p class="hint" style="color:var(--warn)">{{ icon('alert-triangle', 13) }} “{{ name }}” is selected but isn't on your Pushover account any more.</p>
+      {% endfor %}
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" type="submit">{{ icon('check', 16) }} Save</button>
+      <button class="btn" type="submit" name="test" value="1">{{ icon('bell', 15) }} Save and send a test</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

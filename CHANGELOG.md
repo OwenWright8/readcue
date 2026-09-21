@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-09-20
+
+### Added
+- **Add the whole textbook.** Upload the book once (one PDF, scanned or not) and readcue reads every page in the
+  background, using OCR only for pages without a text layer, with progress shown and resuming if the app restarts.
+  It then finds where each scheduled chapter starts and ends: from the PDF's bookmarks when it has them, otherwise
+  from the "Chapter N" heading (or the chapter's title) near the top of a page, skipping the table of contents and
+  ignoring cross-references. A chapter runs to the page before the next one opens. You review the proposed page
+  ranges, fix any that are off, and create the chapters in one click. No more splitting the book by hand or typing
+  page ranges. Come back later to create more chapters from the same stored book.
+- **Choose which devices get notifications.** Settings → Choose devices lists the devices on your Pushover account;
+  pick all of them or specific ones (say your phone but not your tablet), with a "save and send a test" button.
+  The choice is stored in the app and overrides `PUSHOVER_DEVICE`, so no restart or `.env` edit is needed.
+- `READCUE_MAX_UPLOAD_MB` (default 1024) for the largest upload; raise your reverse proxy's limit to match.
+
 ## [1.0.1] - 2026-09-20
 
 ### Fixed
@@ -54,5 +69,6 @@ First release.
 - `readcue backup` writes a consistent copy of the database while the app is running.
 - Limits on upload size, extracted text, Word-document expansion and concurrent OCR.
 
+[1.1.0]: https://github.com/OwenWright8/readcue/releases/tag/v1.1.0
 [1.0.1]: https://github.com/OwenWright8/readcue/releases/tag/v1.0.1
 [1.0.0]: https://github.com/OwenWright8/readcue/releases/tag/v1.0.0

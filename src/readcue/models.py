@@ -97,6 +97,30 @@ class Chapter:
 
 
 @dataclass
+class Book:
+    """A whole textbook uploaded once, read page by page, and split into chapters afterwards."""
+
+    id: int
+    course_id: int
+    course_name: str
+    name: str
+    status: str  # queued | reading | ready | error
+    page_count: int = 0
+    pages_done: int = 0
+    scanned_pages: int = 0  # pages that had no text layer and needed OCR
+    note: str = ""
+    error: str = ""
+
+    @property
+    def percent(self) -> int:
+        return round(self.pages_done * 100 / self.page_count) if self.page_count else 0
+
+    @property
+    def working(self) -> bool:
+        return self.status in ("queued", "reading")
+
+
+@dataclass
 class Reading:
     id: int
     course_id: int

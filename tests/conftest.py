@@ -13,7 +13,7 @@ SUMMARY = {
 }
 
 
-def make_pdf(pages: list[str]) -> bytes:
+def make_pdf(pages: list[str], size: int = 12) -> bytes:
     """A minimal text PDF, one line per page."""
     kids = " ".join(f"{4 + 2 * i} 0 R" for i in range(len(pages)))
     objs = [
@@ -22,7 +22,8 @@ def make_pdf(pages: list[str]) -> bytes:
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     ]
     for i, text in enumerate(pages):
-        content = f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode()
+        shown = " T* ".join(f"({line}) Tj" for line in text.split("\n"))
+        content = f"BT /F1 {size} Tf 72 720 Td {size + 2} TL {shown} ET".encode()
         objs.append(
             f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents {5 + 2 * i} 0 R "
             "/Resources << /Font << /F1 3 0 R >> >> >>".encode()
@@ -69,6 +70,11 @@ class FakeNotifier:
         self.configured = configured
         self.sent: list[dict] = []
         self.fail = False
+        self.devices = ["iphone", "ipad"]  # what "Pushover" says the account has
+        self.selected_devices: list[str] = []
+
+    def list_devices(self):
+        return list(self.devices)
 
     def send(self, title, message, *, url=None, url_title=None):
         if self.fail:

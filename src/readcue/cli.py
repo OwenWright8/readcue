@@ -11,11 +11,12 @@ from datetime import date, datetime
 from pathlib import Path
 
 from . import __version__
+from .books import run_books
 from .config import LOG_LEVELS, Config, check_exposure, load_dotenv
 from .db import Database
 from .errors import ReadcueError
 from .llm import make_provider
-from .notify import PushoverNotifier
+from .notify import notifier_for
 from .scheduler import notify_summary_complete, run_check, run_scheduler
 from .worker import run_worker
 
@@ -32,8 +33,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
     cfg = Config.from_env()
     check_exposure(cfg, args.host)
     db = Database(cfg.db_path)
-    notifier = PushoverNotifier(cfg)
-    stop, wake = threading.Event(), threading.Event()
+    notifier = notifier_for(cfg, db)
+    stop, wake, wake_books = threading.Event(), threading.Event(), threading.Event()
 
     def on_complete(chapter, summary):
         notify_summary_complete(db, cfg, notifier, chapter, summary, today=date.today())
@@ -46,6 +47,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
             name="worker",
         ),
         threading.Thread(target=run_scheduler, args=(db, cfg, notifier, stop), daemon=True, name="scheduler"),
+        threading.Thread(target=run_books, args=(db, cfg, stop, wake_books), daemon=True, name="books"),
     ]
     for thread in threads:
         thread.start()
@@ -71,7 +73,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         cfg.provider,
         cfg.model_name,
     )
-    app = create_app(cfg, db, wake=wake, notifier=notifier, threads=threads)
+    app = create_app(cfg, db, wake=wake, wake_books=wake_books, notifier=notifier, threads=threads)
     try:
         waitress.serve(app, host=args.host, port=args.port, threads=8, ident="readcue")
     finally:
@@ -87,7 +89,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     results = run_check(
         db,
         cfg,
-        PushoverNotifier(cfg),
+        notifier_for(cfg, db),
         today=today,
         now=datetime.now().time(),
         dry_run=args.dry_run,

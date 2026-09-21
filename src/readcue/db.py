@@ -11,9 +11,13 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 from .errors import NotFoundError, ReadcueError
-from .models import SUMMARY_MODES, Chapter, Course, Reading, Summary
+from .models import SUMMARY_MODES, Book, Chapter, Course, Reading, Summary
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS courses (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -46,6 +50,25 @@ CREATE TABLE IF NOT EXISTS summaries (
     body TEXT NOT NULL,
     model TEXT NOT NULL,
     created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS books (
+    id INTEGER PRIMARY KEY,
+    course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'queued',
+    page_count INTEGER NOT NULL DEFAULT 0,
+    pages_done INTEGER NOT NULL DEFAULT 0,
+    scanned_pages INTEGER NOT NULL DEFAULT 0,
+    note TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '',
+    outline TEXT NOT NULL DEFAULT '[]',
+    added_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS book_pages (
+    book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    page INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    PRIMARY KEY (book_id, page)
 );
 CREATE TABLE IF NOT EXISTS notifications (
     id INTEGER PRIMARY KEY,
@@ -105,6 +128,18 @@ class Database:
                 source.backup(target)
         finally:
             target.close()
+
+    # -- settings chosen in the UI (they override the environment) -------------------------
+
+    def get_setting(self, key: str) -> str | None:
+        """None if it was never set; an empty string is a real value (e.g. "all devices")."""
+        with self._conn() as conn:
+            row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else None
+
+    def set_setting(self, key: str, value: str) -> None:
+        with self._conn() as conn:
+            conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
 
     # -- courses ---------------------------------------------------------------------------
 
@@ -337,6 +372,116 @@ class Database:
         summary = Summary.from_dict(json.loads(row["body"]))
         summary.model, summary.created_at = row["model"], row["created_at"]
         return summary
+
+    # -- textbooks -------------------------------------------------------------------------
+
+    _BOOK_SELECT = (
+        "SELECT b.id, b.course_id, c.name AS course_name, b.name, b.status, b.page_count, b.pages_done,"
+        " b.scanned_pages, b.note, b.error FROM books b JOIN courses c ON c.id = b.course_id"
+    )
+
+    @staticmethod
+    def _book(row: sqlite3.Row) -> Book:
+        return Book(
+            id=row["id"],
+            course_id=row["course_id"],
+            course_name=row["course_name"],
+            name=row["name"],
+            status=row["status"],
+            page_count=row["page_count"],
+            pages_done=row["pages_done"],
+            scanned_pages=row["scanned_pages"],
+            note=row["note"],
+            error=row["error"],
+        )
+
+    def add_book(self, course_id: int, name: str) -> int:
+        with self._conn() as conn:
+            cur = conn.execute(
+                "INSERT INTO books (course_id, name, added_at) VALUES (?, ?, ?)", (course_id, name, _now())
+            )
+            return int(cur.lastrowid)
+
+    def get_book(self, book_id: int) -> Book:
+        with self._conn() as conn:
+            row = conn.execute(f"{self._BOOK_SELECT} WHERE b.id = ?", (book_id,)).fetchone()
+        if row is None:
+            raise NotFoundError("Textbook not found.")
+        return self._book(row)
+
+    def list_books(self) -> list[Book]:
+        with self._conn() as conn:
+            rows = conn.execute(f"{self._BOOK_SELECT} ORDER BY b.id").fetchall()
+        return [self._book(r) for r in rows]
+
+    def claim_queued_book(self) -> Book | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                "UPDATE books SET status = 'reading', error = '' WHERE id ="
+                " (SELECT id FROM books WHERE status = 'queued' ORDER BY id LIMIT 1) RETURNING id"
+            ).fetchone()
+        return self.get_book(row["id"]) if row else None
+
+    def reset_reading_books(self) -> None:
+        """At startup: a book being read when the app stopped goes back in the queue and resumes."""
+        with self._conn() as conn:
+            conn.execute("UPDATE books SET status = 'queued' WHERE status = 'reading'")
+
+    def set_book_info(self, book_id: int, *, page_count: int, outline: list[tuple[str, int]]) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE books SET page_count = ?, outline = ? WHERE id = ?",
+                (page_count, json.dumps(outline), book_id),
+            )
+
+    def stored_book_pages(self, book_id: int) -> set[int]:
+        with self._conn() as conn:
+            rows = conn.execute("SELECT page FROM book_pages WHERE book_id = ?", (book_id,)).fetchall()
+        return {r["page"] for r in rows}
+
+    def save_book_pages(self, book_id: int, texts: dict[int, str], *, scanned: int = 0) -> None:
+        with self._conn() as conn:
+            conn.executemany(
+                "INSERT OR REPLACE INTO book_pages (book_id, page, text) VALUES (?, ?, ?)",
+                [(book_id, page, text) for page, text in texts.items()],
+            )
+            conn.execute(
+                "UPDATE books SET scanned_pages = scanned_pages + ?,"
+                " pages_done = (SELECT COUNT(*) FROM book_pages WHERE book_id = ?) WHERE id = ?",
+                (scanned, book_id, book_id),
+            )
+
+    def finish_book(self, book_id: int, note: str = "") -> None:
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE books SET status = 'ready', note = ?, error = '' WHERE id = ?", (note, book_id)
+            )
+
+    def fail_book(self, book_id: int, message: str) -> None:
+        with self._conn() as conn:
+            conn.execute("UPDATE books SET status = 'error', error = ? WHERE id = ?", (message, book_id))
+
+    def requeue_book(self, book_id: int) -> None:
+        with self._conn() as conn:
+            conn.execute("UPDATE books SET status = 'queued', error = '' WHERE id = ?", (book_id,))
+
+    def delete_book(self, book_id: int) -> None:
+        with self._conn() as conn:
+            conn.execute("DELETE FROM books WHERE id = ?", (book_id,))
+
+    def get_book_outline(self, book_id: int) -> list[tuple[str, int]]:
+        with self._conn() as conn:
+            row = conn.execute("SELECT outline FROM books WHERE id = ?", (book_id,)).fetchone()
+        return [(title, page) for title, page in json.loads(row["outline"])] if row else []
+
+    def get_book_page_texts(self, book_id: int, page_count: int) -> list[str]:
+        """Text of every page in order (pages[0] is page 1); a page that wasn't read is an empty string."""
+        pages = [""] * page_count
+        with self._conn() as conn:
+            for row in conn.execute("SELECT page, text FROM book_pages WHERE book_id = ?", (book_id,)):
+                if 1 <= row["page"] <= page_count:
+                    pages[row["page"] - 1] = row["text"]
+        return pages
 
     # -- notifications ---------------------------------------------------------------------
 

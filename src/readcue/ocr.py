@@ -67,32 +67,32 @@ def ocr_image(data: bytes, lang: str) -> str:
         return _recognize(data, lang)
 
 
-def ocr_pdf_pages(pdf: bytes, pages: list[int], lang: str) -> dict[int, str]:
-    """Render and recognise the given 1-based pages of a PDF, several at a time."""
+def ocr_pdf_file(path: Path, pages: list[int], lang: str, *, dpi: int = DPI) -> dict[int, str]:
+    """Render and recognise the given 1-based pages of a PDF on disk, several at a time.
+
+    Holds the OCR lock for the call, so long jobs should pass a few pages at a time.
+    """
     if not available():
         raise ReadcueError(INSTALL_HINT)
     with _ocr_lock, tempfile.TemporaryDirectory() as tmp:
-        source = Path(tmp) / "in.pdf"
-        source.write_bytes(pdf)
 
         def one(page: int) -> tuple[int, str]:
             prefix = Path(tmp) / f"page{page}"
             _run(
-                [
-                    "pdftoppm",
-                    "-r",
-                    str(DPI),
-                    "-png",
-                    "-singlefile",
-                    "-f",
-                    str(page),
-                    "-l",
-                    str(page),
-                    str(source),
-                    str(prefix),
-                ]
+                ["pdftoppm", "-r", str(dpi), "-png", "-singlefile", "-f", str(page), "-l", str(page)]
+                + [str(path), str(prefix)]
             )
             return page, _recognize(Path(f"{prefix}.png").read_bytes(), lang)
 
         with ThreadPoolExecutor(max_workers=max(1, min(len(pages), os.cpu_count() or 2))) as pool:
             return dict(pool.map(one, pages))
+
+
+def ocr_pdf_pages(pdf: bytes, pages: list[int], lang: str) -> dict[int, str]:
+    """Like ocr_pdf_file, for a PDF held in memory (an upload)."""
+    if not available():
+        raise ReadcueError(INSTALL_HINT)
+    with tempfile.TemporaryDirectory() as tmp:
+        source = Path(tmp) / "in.pdf"
+        source.write_bytes(pdf)
+        return ocr_pdf_file(source, pages, lang)

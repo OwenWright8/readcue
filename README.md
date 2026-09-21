@@ -36,10 +36,31 @@ Open <http://localhost:8080>. For a **NAS**, building from source, or HTTPS, see
 1. **Add a course** and **import its syllabus** (PDF, DOCX, TXT/MD, scans or photos, or pasted text). The
    AI pulls out the chapter readings and due dates. You review and edit them, then choose whether
    summaries are **written now** or **scheduled** (see below), and whether to be notified when each is done.
-2. **Add chapters** whenever you have them, even weeks early: upload a PDF/DOCX/TXT, scanned pages, photos,
-   or paste text. For a whole-book PDF, give a page range like `80-112`.
+2. **Add the textbook or its chapters.** The easy way: **Add textbook** and upload the whole book once. readcue
+   reads it (OCR for scans), finds where each chapter on your syllabus starts and ends, and lets you confirm the
+   page ranges (see below). Or add chapters one at a time, even weeks early: a PDF/DOCX/TXT, scanned pages, photos,
+   pasted text, or a page range like `80-112` of a big PDF.
 3. That's it. The dashboard shows every chapter's progress (chapter added, summary, reminder) and the next
    thing to do for it. **Settings** has buttons to test the AI connection and send a test notification.
+
+## Adding a whole textbook
+
+Upload the book once instead of splitting it by hand:
+
+1. On a course, click **Add textbook** and choose the PDF (up to `READCUE_MAX_UPLOAD_MB`, 1 GB by default).
+2. readcue reads every page in the background. Pages with text are read directly; scanned pages go through OCR.
+   Progress is shown, you can leave the page, and it resumes if the app restarts. A scanned book takes a few
+   seconds per page, so a long one may take a while on a NAS.
+3. It then finds each **scheduled** chapter's opening page, the way you would: from the PDF's bookmarks if it has
+   them, otherwise from a "Chapter 7" heading (or the chapter's title) near the top of a page. It skips the table of
+   contents and ignores mentions like "see Chapter 7". Chapter 7 runs to the page before chapter 8 opens, or before an
+   appendix, glossary or index.
+4. You get a review screen with each chapter's page range, page count and a peek at its first page. Fix anything that
+   looks off (a warning marks chapters whose end it couldn't find), untick what you don't want, and **Create chapters**.
+   They then follow your summarize-now or scheduled setting.
+
+The book's text stays stored, so you can return later and create more chapters from it. Page numbers on this screen
+are the PDF's own page numbers (the cover is page 1), not the numbers printed on the pages.
 
 ## Reading scans and photos (OCR)
 
@@ -138,6 +159,11 @@ definitions from every part are kept.
 
 Create an application at <https://pushover.net/apps/build> for `PUSHOVER_APP_TOKEN`; your user key is on
 the Pushover dashboard (`PUSHOVER_USER_KEY`).
+
+**Choose which devices get notifications** in **Settings → Choose devices**. It lists the devices registered on your
+Pushover account: pick all of them, or only some (for example your phone but not your tablet), and use **Save and
+send a test** to check. The choice is saved in the app and applies to every notification. (`PUSHOVER_DEVICE` in `.env`
+sets the default before you've chosen; the picker overrides it.)
 
 Set `READCUE_BASE_URL` (for example `http://my-server.local:8080`) so notifications carry an **Open summary**
 link. It needs to be reachable from your phone (LAN, VPN or Tailscale).

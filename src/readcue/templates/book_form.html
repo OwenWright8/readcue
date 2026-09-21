@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Add textbook · readcue{% endblock %}
+{% block content %}
+<div style="max-width:720px;margin-inline:auto">
+  <a class="crumb" href="{{ url_for('index') }}">{{ icon('arrow-left', 16) }} Dashboard</a>
+  <div class="page-head" style="margin-bottom:20px">
+    <div>
+      <h1>Add the whole textbook</h1>
+      <p class="lede">{{ course.name }}. Upload the book once. readcue reads every page, finds where each chapter on your syllabus starts and ends, and splits them out for you.</p>
+    </div>
+  </div>
+
+  <form class="card card-pad form-stack" method="post" action="{{ url_for('book_add', course_id=course.id) }}" enctype="multipart/form-data" data-busy="Uploading… large books take a minute">
+    <div>
+      <span class="field-label">Textbook PDF</span>
+      <label class="dropzone">
+        <span class="dz-icon">{{ icon('book-open', 22) }}</span>
+        <strong>Drop the textbook here, or click to browse</strong>
+        <span class="muted">One PDF, up to {{ max_mb }} MB. Scanned books work too: pages without text are read with OCR.</span>
+        <input type="file" name="file" accept=".pdf,application/pdf" required>
+      </label>
+      <ul class="file-list"></ul>
+    </div>
+
+    <div class="callout">{{ icon('info', 18) }}<span>Reading happens in the background and can take a while for a scanned book (a few seconds per page). You can leave this page. Once it's done you'll review the chapter page ranges before anything is created.</span></div>
+
+    <button class="btn btn-primary" type="submit">{{ icon('upload', 16) }} Upload and read</button>
+  </form>
+</div>
+{% endblock %}

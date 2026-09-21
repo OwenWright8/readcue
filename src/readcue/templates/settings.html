@@ -44,6 +44,8 @@
       <div class="kv">
         <div>Pushover</div>
         <div>{% if pushover_ready %}<span class="pill ok">Configured</span>{% else %}<span class="pill bad">Not configured</span> <span class="muted">Set PUSHOVER_APP_TOKEN and PUSHOVER_USER_KEY.</span>{% endif %}</div>
+        <div>Send to</div>
+        <div>{{ devices|join(', ') or 'All devices' }}{% if pushover_ready %} <a href="{{ url_for('devices_page') }}" style="margin-left:8px">Choose devices</a>{% endif %}</div>
         <div>Summary complete</div><div>A ping when a summary finishes, if the course has it turned on</div>
         <div>Reading reminder</div><div>{{ cfg.notify_days_before }} day{{ '' if cfg.notify_days_before == 1 else 's' }} before the due date, from {{ cfg.notify_time.strftime('%H:%M') }}</div>
         <div>Notification links</div><div>{{ cfg.base_url or 'Off. Set READCUE_BASE_URL to add an “Open summary” link.' }}</div>
