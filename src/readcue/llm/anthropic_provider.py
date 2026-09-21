@@ -1,9 +1,27 @@
 from __future__ import annotations
 
+import logging
+
 import anthropic
 
 from ..config import Config
 from ..errors import LLMError
+
+log = logging.getLogger(__name__)
+
+
+def _detail(error: anthropic.APIStatusError) -> str:
+    """The API's own sentence ("prompt is too long"), without the SDK's "Error code: 400 - {...}" wrapper."""
+    body = error.body
+    if isinstance(body, dict):
+        inner = body.get("error", body)
+        if isinstance(inner, dict) and isinstance(inner.get("message"), str):
+            return inner["message"]
+    return error.message
+
+
+class _StructuredRejected(LLMError):
+    """Claude answered 400 to a request that carried a JSON schema."""
 
 
 class AnthropicProvider:
@@ -21,13 +39,30 @@ class AnthropicProvider:
     def label(self) -> str:
         return f"anthropic:{self.model}"
 
-    def complete(self, system: str, user: str, *, json_mode: bool = False) -> str:
+    def complete(self, system: str, user: str, *, json_mode: bool = False, schema: dict | None = None) -> str:
+        if schema is not None:
+            try:
+                return self._text(self._send(system, user, schema))
+            except (
+                _StructuredRejected
+            ) as e:  # e.g. a model without structured outputs: fall back to plain JSON
+                log.warning(
+                    "Claude rejected structured outputs for %s (%s); asking for plain JSON", self.model, e
+                )
+        return self._text(self._send(system, user, None))
+
+    def _send(self, system: str, user: str, schema: dict | None):
+        extra = {}
+        if schema is not None:
+            # Constrained decoding: the reply is guaranteed to be valid JSON matching the schema.
+            extra["output_config"] = {"format": {"type": "json_schema", "schema": schema}}
         try:
-            response = self._client.messages.create(
+            return self._client.messages.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
                 system=system,
                 messages=[{"role": "user", "content": user}],
+                **extra,
             )
         except anthropic.AuthenticationError as e:
             raise LLMError("Claude API rejected the API key. Check ANTHROPIC_API_KEY.") from e
@@ -37,14 +72,20 @@ class AnthropicProvider:
             raise LLMError("Claude API rate limit hit. Try again in a minute.") from e
         except anthropic.APIConnectionError as e:
             raise LLMError(f"Couldn't reach the Claude API: {e}") from e
+        except anthropic.BadRequestError as e:
+            if schema is not None:
+                raise _StructuredRejected(_detail(e)) from e
+            raise LLMError(f"Claude API error (400): {_detail(e)}") from e
         except anthropic.APIStatusError as e:
-            raise LLMError(f"Claude API error ({e.status_code}): {e.message}") from e
+            raise LLMError(f"Claude API error ({e.status_code}): {_detail(e)}") from e
         except TypeError as e:
             # The SDK signals "no credentials found anywhere" with a bare TypeError.
             if "authentication method" not in str(e):
                 raise
             raise LLMError("No Claude API credentials found. Set ANTHROPIC_API_KEY.") from e
 
+    @staticmethod
+    def _text(response) -> str:
         if response.stop_reason == "refusal":
             raise LLMError("Claude declined to process this text.")
         if response.stop_reason == "max_tokens":

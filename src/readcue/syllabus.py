@@ -9,6 +9,7 @@ from datetime import date
 from . import prompts
 from .errors import ReadcueError
 from .llm.base import LLMProvider, complete_structured
+from .schemas import SYLLABUS_SCHEMA
 
 log = logging.getLogger(__name__)
 
@@ -48,4 +49,5 @@ def extract_schedule(provider: LLMProvider, text: str, *, today: date) -> list[S
         prompts.SYLLABUS_SYSTEM,
         prompts.syllabus_prompt(text, today.isoformat()),
         _parse_items,
+        schema=SYLLABUS_SCHEMA,
     )

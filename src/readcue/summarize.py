@@ -12,6 +12,7 @@ from . import prompts
 from .errors import LLMError
 from .llm.base import LLMProvider, complete_structured
 from .models import Definition, Summary
+from .schemas import COMBINE_SCHEMA, SUMMARY_SCHEMA
 
 log = logging.getLogger(__name__)
 
@@ -77,7 +78,11 @@ def summarize_chapter(
     system = prompts.SUMMARY_SYSTEM
     if len(text) <= provider.max_input_chars:
         return complete_structured(
-            provider, system, prompts.summary_prompt(course, number, title, text), _parse_summary
+            provider,
+            system,
+            prompts.summary_prompt(course, number, title, text),
+            _parse_summary,
+            schema=SUMMARY_SCHEMA,
         )
 
     chunks = split_text(text, provider.max_input_chars)
@@ -85,7 +90,7 @@ def summarize_chapter(
     for i, chunk in enumerate(chunks, 1):
         progress(f"Summarizing part {i} of {len(chunks)}")
         prompt = prompts.part_prompt(course, number, title, i, len(chunks), chunk)
-        parts.append(complete_structured(provider, system, prompt, _parse_summary))
+        parts.append(complete_structured(provider, system, prompt, _parse_summary, schema=SUMMARY_SCHEMA))
 
     combined = _combine(provider, parts, course=course, number=number, title=title, progress=progress)
     combined.definitions = merge_definitions(parts)
@@ -111,7 +116,9 @@ def _combine(
 
     def combine(items: list[Summary]) -> Summary:
         prompt = prompts.combine_prompt(course, number, title, payload(items))
-        return complete_structured(provider, prompts.SUMMARY_SYSTEM, prompt, _parse_summary)
+        return complete_structured(
+            provider, prompts.SUMMARY_SYSTEM, prompt, _parse_summary, schema=COMBINE_SCHEMA
+        )
 
     while True:
         if len(payload(parts)) <= provider.max_input_chars:

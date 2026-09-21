@@ -4,7 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.0.1] - 2026-09-20
+
+### Fixed
+- **"The summary failed: didn't return usable JSON."** Claude (and Ollama 0.5+) replies are now constrained to a
+  JSON schema, so a definition that quotes a term can no longer produce an unparseable reply. If a model or server
+  doesn't support that, it falls back to plain JSON mode. When a reply is unusable anyway, the log now shows the
+  text around the problem.
+- Claude API errors show the API's own message instead of the SDK's raw `Error code: 400 - {...}` wrapper.
 
 ### Changed
 - `docker-compose.yml` now pulls the published image, so a NAS or server needs only that file and a `.env`, with no
@@ -47,4 +54,5 @@ First release.
 - `readcue backup` writes a consistent copy of the database while the app is running.
 - Limits on upload size, extracted text, Word-document expansion and concurrent OCR.
 
+[1.0.1]: https://github.com/OwenWright8/readcue/releases/tag/v1.0.1
 [1.0.0]: https://github.com/OwenWright8/readcue/releases/tag/v1.0.0

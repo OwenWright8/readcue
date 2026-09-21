@@ -54,9 +54,11 @@ class FakeProvider:
         self.responder = responder
         self.max_input_chars = max_input_chars
         self.calls: list[str] = []
+        self.schemas: list[dict | None] = []
 
-    def complete(self, system, user, *, json_mode=False):
+    def complete(self, system, user, *, json_mode=False, schema=None):
         self.calls.append(user)
+        self.schemas.append(schema)
         if callable(self.responder):
             return self.responder(user)
         return self.responder.pop(0)

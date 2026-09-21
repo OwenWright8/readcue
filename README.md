@@ -127,7 +127,9 @@ docker compose exec ollama ollama pull llama3.1:8b
 **Ollama already running elsewhere:** point `OLLAMA_HOST` at it (`http://host.docker.internal:11434` for
 the machine running Docker, or `http://<lan-ip>:11434`) and leave `COMPOSE_PROFILES` unset.
 
-Small local models are fine for summaries but can misread messy syllabus tables. That's why the schedule
+Claude's replies are constrained to a JSON schema, so summaries can't fail on malformed output; Ollama gets the same
+schemas on version 0.5 or newer (older servers fall back to plain JSON mode). Small local models are fine for
+summaries but can misread messy syllabus tables. That's why the schedule
 is always shown for review before saving. Chapters too long for a model's context window
 (`OLLAMA_NUM_CTX` for Ollama; roughly half of it is usable for text) are summarized in parts and combined;
 definitions from every part are kept.

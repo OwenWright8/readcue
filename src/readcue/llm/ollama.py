@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable
 
 from .. import http
 from ..config import Config
 from ..errors import LLMError
+
+log = logging.getLogger(__name__)
 
 Transport = Callable[[str, bytes, dict[str, str], float], tuple[int, bytes]]
 
@@ -29,25 +32,16 @@ class OllamaProvider:
     def label(self) -> str:
         return f"ollama:{self.model}"
 
-    def complete(self, system: str, user: str, *, json_mode: bool = False) -> str:
-        payload = {
-            "model": self.model,
-            "stream": False,
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-            "options": {"num_ctx": self.num_ctx, "temperature": 0.2},
-        }
-        if json_mode:
-            payload["format"] = "json"
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-
-        try:
-            status, raw = self._transport(
-                f"{self.host}/api/chat", json.dumps(payload).encode(), headers, self.timeout
+    def complete(self, system: str, user: str, *, json_mode: bool = False, schema: dict | None = None) -> str:
+        # A schema constrains the reply to that shape (Ollama 0.5+); otherwise plain JSON mode.
+        reply_format = schema if schema is not None else ("json" if json_mode else None)
+        status, raw = self._chat(system, user, reply_format)
+        if status == 400 and isinstance(reply_format, dict):
+            log.warning(
+                "Ollama rejected the JSON schema (%s); retrying in plain JSON mode. Update Ollama.",
+                _error_text(raw),
             )
-        except OSError as e:
-            raise LLMError(f"Couldn't reach Ollama at {self.host}: {e}") from e
+            status, raw = self._chat(system, user, "json")
         if status != 200:
             raise LLMError(f"Ollama returned HTTP {status}: {_error_text(raw)}")
         try:
@@ -57,6 +51,25 @@ class OllamaProvider:
         if not isinstance(content, str) or not content.strip():
             raise LLMError("Ollama returned an empty response.")
         return content
+
+    def _chat(self, system: str, user: str, reply_format: dict | str | None) -> tuple[int, bytes]:
+        payload = {
+            "model": self.model,
+            "stream": False,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "options": {"num_ctx": self.num_ctx, "temperature": 0.2},
+        }
+        if reply_format is not None:
+            payload["format"] = reply_format
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        try:
+            return self._transport(
+                f"{self.host}/api/chat", json.dumps(payload).encode(), headers, self.timeout
+            )
+        except OSError as e:
+            raise LLMError(f"Couldn't reach Ollama at {self.host}: {e}") from e
 
 
 def _error_text(raw: bytes) -> str:
