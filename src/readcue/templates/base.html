@@ -1,0 +1,42 @@
+{% from "_icons.html" import icon -%}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{% block title %}readcue{% endblock %}</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236a6dff'/%3E%3Cstop offset='1' stop-color='%239b5cf2'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M8 9h5a3 3 0 0 1 3 3v11a2 2 0 0 0-2-2H8zM24 9h-5a3 3 0 0 0-3 3v11a2 2 0 0 1 2-2h6z' fill='white'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<noscript><style>.reading-edit { display: grid; }</style></noscript>
+{% block head %}{% endblock %}
+</head>
+<body>
+<header class="topbar"><div class="wrap topbar-inner">
+  <a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">{{ icon('book-open', 17) }}</span>readcue</a>
+  <nav class="nav" aria-label="Main">
+    <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' }}">{{ icon('grid', 16) }}<span>Dashboard</span></a>
+    <a href="{{ url_for('settings') }}" class="{{ 'active' if request.endpoint == 'settings' }}">{{ icon('sliders', 16) }}<span>Settings</span></a>
+  </nav>
+</div></header>
+
+{% set flashes = get_flashed_messages(with_categories=true) %}
+{% if flashes %}
+<div class="toasts" role="status" aria-live="polite">
+  {% for category, message in flashes %}
+  <div class="toast {{ category }}">
+    {{ icon('alert-circle' if category == 'error' else 'alert-triangle' if category == 'warn' else 'check-circle', 18) }}
+    <div>{{ message }}</div>
+    <button type="button" aria-label="Dismiss">{{ icon('x', 16) }}</button>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<main class="wrap">
+  {% block content %}{% endblock %}
+</main>
+<footer class="wrap site-foot">readcue v{{ app_version }}</footer>
+<script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</body>
+</html>

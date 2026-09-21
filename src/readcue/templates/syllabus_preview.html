@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Review schedule · readcue{% endblock %}
+{% block content %}
+<div style="max-width:820px;margin-inline:auto">
+  <a class="crumb" href="{{ url_for('syllabus_form', course_id=course.id) }}">{{ icon('arrow-left', 16) }} Back</a>
+  <div class="page-head" style="margin-bottom:20px">
+    <div>
+      <h1>We found {{ items|length }} chapter{{ '' if items|length == 1 else 's' }}</h1>
+      <p class="lede">{{ course.name }}. Check the dates, fix anything that's off, and untick anything that isn't a chapter reading.</p>
+    </div>
+  </div>
+
+  <form method="post" action="{{ url_for('syllabus_save', course_id=course.id) }}">
+    <input type="hidden" name="count" value="{{ items|length }}">
+
+    <section class="card">
+      <div class="found head"><span></span><span>Chapter</span><span>Title</span><span>Ready by</span></div>
+      {% for item in items %}
+      <div class="found">
+        <input type="checkbox" name="include-{{ loop.index0 }}" checked aria-label="Include chapter {{ item.chapter }}">
+        <input type="number" name="chapter-{{ loop.index0 }}" value="{{ item.chapter }}" min="1" required aria-label="Chapter number">
+        <input name="title-{{ loop.index0 }}" value="{{ item.title }}" placeholder="Title" aria-label="Title">
+        <input type="date" name="due-{{ loop.index0 }}" value="{{ item.due.isoformat() }}" required aria-label="Due date">
+      </div>
+      {% endfor %}
+    </section>
+
+    <div class="section-title"><h3>When should the summaries be written?</h3></div>
+    <div class="choice-grid">
+      <label class="choice">
+        <input type="radio" name="summary_mode" value="scheduled" {{ 'checked' if course.summary_mode != 'now' }}>
+        <span class="choice-body">
+          <span class="top"><span class="icon-wrap">{{ icon('clock', 18) }}</span>Schedule them<span class="chip accent">Recommended</span></span>
+          <p>Each summary is written {{ sum_days }} days before its chapter is due. Nothing is spent early, so if the syllabus changes you've lost nothing.</p>
+        </span>
+      </label>
+      <label class="choice">
+        <input type="radio" name="summary_mode" value="now" {{ 'checked' if course.summary_mode == 'now' }}>
+        <span class="choice-body">
+          <span class="top"><span class="icon-wrap">{{ icon('zap', 18) }}</span>Summarize now</span>
+          <p>Each summary is written as soon as you add its chapter, so you can read ahead. Best when the schedule is final.</p>
+        </span>
+      </label>
+    </div>
+
+    <div class="card card-pad" style="margin-top:16px">
+      <label class="switch">
+        <input type="checkbox" name="notify_on_summary" {{ 'checked' if course.notify_on_summary }}><span class="track"></span>
+        <span>Notify me on Pushover when a summary is complete<small>You'll also get a reminder the day before each chapter is due. You can change both later from the course card.</small></span>
+      </label>
+    </div>
+
+    <div class="actions" style="margin-top:20px">
+      <button class="btn btn-primary" type="submit">{{ icon('check', 16) }} Save schedule</button>
+      <a class="btn btn-ghost" href="{{ url_for('index') }}">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

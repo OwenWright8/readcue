@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block head %}{% if busy %}<meta http-equiv="refresh" content="6">{% endif %}{% endblock %}
+{% block content %}
+
+{% if not groups %}
+<section class="card empty">
+  <div class="hero-mark">{{ icon('book-open', 30) }}</div>
+  <h2>Let's set up your first course</h2>
+  <p class="lede">Give readcue your syllabus and your textbook chapters. It summarizes each chapter before it's due and reminds you on Pushover.</p>
+  <form class="inline-form" method="post" action="{{ url_for('course_add') }}" style="justify-content:center;margin-top:24px">
+    <input name="name" placeholder="Course name, e.g. BIO 101" required autofocus>
+    <button class="btn btn-primary">{{ icon('plus', 16) }} Create course</button>
+  </form>
+  <div class="how">
+    <div><span class="n">1</span><strong>Import the syllabus</strong><span>Upload a PDF, Word file, scan or photo. readcue finds every chapter and due date; you confirm them.</span></div>
+    <div><span class="n">2</span><strong>Add chapters as you get them</strong><span>PDFs, scans and photos all work. Summaries are written now or {{ sum_days }} days before each is due, your choice.</span></div>
+    <div><span class="n">3</span><strong>Get the ping</strong><span>Pushover tells you when a summary is done and reminds you the day before each chapter is due.</span></div>
+  </div>
+</section>
+
+{% else %}
+<div class="page-head">
+  <div>
+    <h1>Reading plan</h1>
+    <p class="lede">Summaries land {{ sum_days }} days before each chapter is due unless you choose otherwise; reminders arrive the day before.</p>
+  </div>
+  <form class="inline-form" method="post" action="{{ url_for('course_add') }}">
+    <input name="name" placeholder="New course, e.g. HIST 210" required aria-label="New course name">
+    <button class="btn btn-primary">{{ icon('plus', 16) }} New course</button>
+  </form>
+</div>
+
+<section class="stats" aria-label="Overview">
+  <div class="stat"><span class="stat-icon">{{ icon('calendar', 20) }}</span><div><strong>{{ stats.due_soon }}</strong><span class="label">Due this week</span></div></div>
+  <div class="stat ok"><span class="stat-icon">{{ icon('check-circle', 20) }}</span><div><strong>{{ stats.ready }}</strong><span class="label">Summaries ready</span></div></div>
+  <div class="stat info"><span class="stat-icon">{{ icon('clock', 20) }}</span><div><strong>{{ stats.waiting }}</strong><span class="label">Scheduled to summarize</span></div></div>
+  <div class="stat warn"><span class="stat-icon">{{ icon('upload', 20) }}</span><div><strong>{{ stats.to_add }}</strong><span class="label">Chapters to add</span></div></div>
+</section>
+
+{% for g in groups %}
+{% set course = g.course %}
+<section class="card">
+  <div class="card-head">
+    <div class="card-title">
+      <h2>{{ course.name }}</h2>
+      <div class="meta">
+        <span>{{ g.readings|length }} chapter{{ '' if g.readings|length == 1 else 's' }}</span>
+        {% if g.readings %}
+          <span class="progress" title="{{ g.ready }} of {{ g.readings|length }} summarized"><i style="width: {{ (g.ready * 100 / g.readings|length)|round|int }}%"></i></span>
+          <span>{{ g.ready }} summarized</span>
+        {% endif %}
+      </div>
+      <div class="meta">
+        <span class="chip {{ 'accent' if course.summary_mode == 'now' }}">{{ icon('zap' if course.summary_mode == 'now' else 'clock', 12) }}
+          {{ 'Summarize on add' if course.summary_mode == 'now' else 'Scheduled ' ~ sum_days ~ ' days before due' }}</span>
+        {% if course.notify_on_summary %}<span class="chip">{{ icon('bell', 12) }} Notify when done</span>{% endif %}
+      </div>
+    </div>
+    <div class="actions">
+      <a class="btn btn-sm" href="{{ url_for('syllabus_form', course_id=course.id) }}">{{ icon('file-text', 15) }} Import syllabus</a>
+      <a class="btn btn-sm btn-primary" href="{{ url_for('chapter_form', course_id=course.id) }}">{{ icon('upload', 15) }} Add chapter</a>
+      <details class="menu">
+        <summary class="btn btn-sm btn-ghost btn-icon" title="Summary settings" aria-label="Summary settings">{{ icon('sliders', 17) }}</summary>
+        <div class="menu-panel">
+          <form method="post" action="{{ url_for('course_settings', course_id=course.id) }}" class="stack">
+            <h3>When to write summaries</h3>
+            <label class="choice"><input type="radio" name="summary_mode" value="scheduled" {{ 'checked' if course.summary_mode != 'now' }}>
+              <span class="choice-body"><span class="top"><span class="icon-wrap">{{ icon('clock', 16) }}</span>Schedule them</span>
+              <p>{{ sum_days }} days before each chapter is due.</p></span></label>
+            <label class="choice"><input type="radio" name="summary_mode" value="now" {{ 'checked' if course.summary_mode == 'now' }}>
+              <span class="choice-body"><span class="top"><span class="icon-wrap">{{ icon('zap', 16) }}</span>Summarize now</span>
+              <p>As soon as a chapter is added.</p></span></label>
+            <label class="switch"><input type="checkbox" name="notify_on_summary" {{ 'checked' if course.notify_on_summary }}><span class="track"></span><span>Notify me when a summary is complete</span></label>
+            <button class="btn btn-primary btn-sm">Save</button>
+          </form>
+        </div>
+      </details>
+      <form method="post" action="{{ url_for('course_delete', course_id=course.id) }}" data-confirm="Delete {{ course.name }} and all its chapters and summaries?">
+        <button class="btn btn-sm btn-ghost btn-icon btn-danger" title="Delete course" aria-label="Delete course">{{ icon('trash', 17) }}</button>
+      </form>
+    </div>
+  </div>
+
+  {% set to_add = g.readings|selectattr('chapter_id', 'none')|list %}
+  {% if g.readings and to_add|length == g.readings|length %}
+  <div class="callout">{{ icon('info', 18) }}<span>Next step: add your chapters. Start with <a href="{{ url_for('chapter_form', course_id=course.id, chapter=to_add[0].chapter) }}">Chapter {{ to_add[0].chapter }}</a>, due {{ to_add[0].due|nice_date }}.</span></div>
+  {% endif %}
+
+  {% if g.readings %}
+  <ul class="readings">
+    {% for r in g.readings %}
+    {% set stage = r.stage(today, sum_days) %}
+    {% set days = (r.due - today).days %}
+    <li class="reading {{ 'is-past' if days < 0 }}">
+      <div class="date-tile {{ 'today' if days == 0 else 'soon' if 0 < days <= 3 }}"><span>{{ r.due|month_abbr }}</span><strong>{{ r.due.day }}</strong></div>
+
+      <div>
+        <div class="reading-title"><span class="ch">Ch. {{ r.chapter }}</span>{{ r.title or 'Untitled chapter' }}</div>
+        <div class="reading-sub">Due {{ r.due|nice_date }}<span class="dot">•</span>{{ r.due|relative_day(today) }}</div>
+      </div>
+
+      <ol class="steps" aria-label="Progress">
+        {% if stage != 'missing' %}<li class="step is-done" title="Chapter added">{{ icon('check', 14) }}Chapter</li>
+        {% else %}<li class="step" title="Chapter not added yet">{{ icon('file-text', 14) }}Chapter</li>{% endif %}
+
+        {% if stage == 'done' %}<li class="step is-done" title="Summary ready">{{ icon('check', 14) }}Summary</li>
+        {% elif stage == 'running' %}<li class="step is-active" title="Being written now"><span class="spinner"></span>Summarizing</li>
+        {% elif stage == 'queued' %}<li class="step is-active" title="Waiting for the summarizer">{{ icon('clock', 14) }}Queued</li>
+        {% elif stage == 'waiting' %}<li class="step is-waiting" title="Written automatically {{ sum_days }} days before the due date">{{ icon('clock', 14) }}{{ r.summarize_on(sum_days)|short_date }}</li>
+        {% elif stage == 'error' %}<li class="step is-error" title="The summary failed">{{ icon('alert-circle', 14) }}Failed</li>
+        {% else %}<li class="step" title="No summary yet">{{ icon('zap', 14) }}Summary</li>{% endif %}
+
+        {% if r.reminded %}<li class="step is-done" title="Reminder sent">{{ icon('bell', 14) }}Reminded</li>
+        {% elif 'reminder_no_summary' in r.notifications %}<li class="step is-warn" title="Reminded, but the summary wasn't ready">{{ icon('bell', 14) }}Reminded</li>
+        {% else %}<li class="step" title="Reminder goes out {{ (r.due - lead)|nice_date }}">{{ icon('bell', 14) }}{{ (r.due - lead)|short_date if days >= 0 else 'Reminder' }}</li>{% endif %}
+      </ol>
+
+      <div class="reading-actions">
+        {% if stage == 'missing' %}
+          <a class="btn btn-sm btn-primary" href="{{ url_for('chapter_form', course_id=r.course_id, chapter=r.chapter) }}">{{ icon('upload', 14) }} Add chapter</a>
+        {% elif stage == 'waiting' %}
+          <form class="inline" method="post" action="{{ url_for('chapter_resummarize', chapter_id=r.chapter_id) }}"><button class="btn btn-sm">{{ icon('zap', 14) }} Summarize now</button></form>
+        {% elif stage == 'done' %}
+          <a class="btn btn-sm btn-primary" href="{{ url_for('summary_page', chapter_id=r.chapter_id) }}">{{ icon('book-open', 14) }} Read summary</a>
+        {% elif stage == 'error' %}
+          <form class="inline" method="post" action="{{ url_for('chapter_resummarize', chapter_id=r.chapter_id) }}"><button class="btn btn-sm">{{ icon('refresh', 14) }} Retry</button></form>
+          <a class="btn btn-sm btn-ghost" href="{{ url_for('summary_page', chapter_id=r.chapter_id) }}">Details</a>
+        {% endif %}
+        <button type="button" class="btn btn-sm btn-ghost btn-icon" data-toggle-edit title="Edit" aria-label="Edit chapter {{ r.chapter }}" aria-expanded="false">{{ icon('edit', 15) }}</button>
+      </div>
+
+      <form class="reading-edit" method="post" action="{{ url_for('reading_update', reading_id=r.id) }}">
+        <div class="fields">
+          <div><label class="field" for="t-{{ r.id }}">Title</label><input id="t-{{ r.id }}" name="title" value="{{ r.title }}"></div>
+          <div class="narrow"><label class="field" for="d-{{ r.id }}">Due date</label><input id="d-{{ r.id }}" type="date" name="due" value="{{ r.due.isoformat() }}" required></div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-sm btn-primary">Save</button>
+          <button class="btn btn-sm btn-danger" formaction="{{ url_for('reading_delete', reading_id=r.id) }}" formnovalidate data-confirm="Remove chapter {{ r.chapter }} from the schedule?">{{ icon('trash', 14) }} Remove</button>
+        </div>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <form class="add-row" method="post" action="{{ url_for('reading_add', course_id=course.id) }}">
+    <span>{{ icon('plus', 14) }} Add a reading</span>
+    <input type="number" name="chapter" min="1" placeholder="Ch." required aria-label="Chapter number" style="width:76px">
+    <input name="title" placeholder="Title (optional)" aria-label="Title" style="width:200px">
+    <input type="date" name="due" required aria-label="Due date" style="width:160px">
+    <button class="btn btn-sm">Add</button>
+  </form>
+</section>
+{% endfor %}
+{% endif %}
+{% endblock %}

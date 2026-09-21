@@ -1,0 +1,52 @@
+services:
+  readcue:
+    build:
+      context: .
+      args:
+        EXTRA_OCR_PACKAGES: ${EXTRA_OCR_PACKAGES:-}
+    image: readcue:latest
+    init: true # proper SIGTERM handling, so `docker compose stop` is instant
+    restart: unless-stopped
+    ports:
+      # Localhost only by default. Set READCUE_BIND=0.0.0.0 in .env to reach it from other devices
+      # (and set READCUE_PASSWORD when you do).
+      - "${READCUE_BIND:-127.0.0.1}:${READCUE_PORT:-8080}:8080"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      TZ: ${TZ:-UTC} # reminders go out at READCUE_NOTIFY_TIME in this timezone
+      # The app reads this to decide whether a password is required: exposed beyond localhost => it must be set.
+      READCUE_BIND: ${READCUE_BIND:-127.0.0.1}
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    stop_grace_period: 20s
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # lets the container reach an Ollama running on the host
+    volumes:
+      - readcue-data:/data
+
+  # Optional self-hosted LLM. Enable with `docker compose --profile ollama up -d`
+  # (or COMPOSE_PROFILES=ollama in .env), then pull a model:
+  #   docker compose exec ollama ollama pull llama3.1:8b
+  ollama:
+    profiles: ["ollama"]
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+    # NVIDIA GPU (needs the NVIDIA Container Toolkit): uncomment
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+volumes:
+  readcue-data:
+  ollama-models:

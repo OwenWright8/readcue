@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Add chapter · readcue{% endblock %}
+{% block content %}
+<div style="max-width:720px;margin-inline:auto">
+  <a class="crumb" href="{{ url_for('index') }}">{{ icon('arrow-left', 16) }} Dashboard</a>
+  <div class="page-head" style="margin-bottom:20px">
+    <div>
+      <h1>Add a chapter</h1>
+      <p class="lede">Upload a chapter and readcue reads it, then writes the summary and key definitions.</p>
+    </div>
+  </div>
+
+  {% if not courses %}
+    <div class="card card-pad"><p class="muted">Add a course on the <a href="{{ url_for('index') }}">dashboard</a> first.</p></div>
+  {% else %}
+  <form class="card card-pad form-stack" method="post" action="{{ url_for('chapter_add') }}" enctype="multipart/form-data" data-busy="Reading the file… scans are OCR’d, which can take a few minutes">
+    <div class="form-row">
+      <div>
+        <label class="field" for="course_id">Course</label>
+        <select id="course_id" name="course_id" required>
+          {% for c in courses %}<option value="{{ c.id }}" {{ 'selected' if c.id == course_id }}>{{ c.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field" for="number">Chapter number</label>
+        <input id="number" type="number" name="number" min="1" value="{{ chapter or '' }}" required>
+      </div>
+    </div>
+
+    <div>
+      <label class="field" for="title">Title <span class="faint" style="font-weight:400">(optional; defaults to the syllabus title)</span></label>
+      <input id="title" name="title">
+    </div>
+
+    <div>
+      <span class="field-label">Chapter</span>
+      <label class="dropzone">
+        <span class="dz-icon">{{ icon('upload', 22) }}</span>
+        <strong>Drop the chapter here, or click to browse</strong>
+        <span class="muted">PDF, Word, TXT or Markdown. Scanned PDFs and photos (PNG, JPG, TIFF) are read with OCR. Add several photos at once and they're joined in filename order.</span>
+        <input type="file" name="file" multiple accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.tif,.tiff,.bmp">
+      </label>
+      <ul class="file-list"></ul>
+    </div>
+
+    <details class="more">
+      <summary>{{ icon('chevron-down', 16) }} Options: page range, or paste text</summary>
+      <div class="body form-stack">
+        <div>
+          <label class="field" for="pages">PDF page range</label>
+          <input id="pages" name="pages" placeholder="80-112" style="max-width:180px">
+          <p class="hint">For a whole-book PDF: only these pages are read.</p>
+        </div>
+        <div>
+          <label class="field" for="text">Or paste the chapter text</label>
+          <textarea id="text" name="text"></textarea>
+        </div>
+      </div>
+    </details>
+
+    <div class="callout">{{ icon('info', 18) }}<span>{{ model }} writes the summary. By default that happens {{ sum_days }} days before the chapter is due, and you'll be notified when it's done. Change this per course from the dashboard.</span></div>
+
+    <button class="btn btn-primary" type="submit">{{ icon('upload', 16) }} Add chapter</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

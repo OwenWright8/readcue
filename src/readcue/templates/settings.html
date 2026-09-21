@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Settings · readcue{% endblock %}
+{% block content %}
+<div style="max-width:760px;margin-inline:auto">
+  <div class="page-head" style="margin-bottom:20px">
+    <div>
+      <h1>Settings</h1>
+      <p class="lede">Configured with environment variables (see <code>.env.example</code>). Edit them and run <code>docker compose up -d</code> to apply.</p>
+    </div>
+  </div>
+
+  <section class="card">
+    <div class="card-section-head"><span class="badge-icon">{{ icon('cpu', 18) }}</span><h2>AI model</h2></div>
+    <div class="card-body">
+      <div class="kv">
+        <div>Provider</div><div>{{ 'Claude API' if cfg.provider == 'anthropic' else 'Ollama (self-hosted)' }}</div>
+        <div>Model</div><div>{{ cfg.model_name }}</div>
+        {% if cfg.provider == 'ollama' %}
+        <div>Ollama host</div><div>{{ cfg.ollama_host }}</div>
+        <div>Context window</div><div>{{ cfg.ollama_num_ctx }} tokens</div>
+        {% else %}
+        <div>API key</div><div>{{ 'Set in ANTHROPIC_API_KEY' if cfg.anthropic_api_key else 'Not set here; the SDK will look for other credentials' }}</div>
+        {% endif %}
+      </div>
+      <form method="post" action="{{ url_for('test_llm') }}" style="margin-top:14px"><button class="btn btn-sm">{{ icon('zap', 14) }} Test connection</button></form>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-section-head"><span class="badge-icon">{{ icon('image', 18) }}</span><h2>Reading files</h2></div>
+    <div class="card-body">
+      <div class="kv">
+        <div>OCR (scans and photos)</div>
+        <div>{% if ocr_ready %}<span class="pill ok">Available</span> <span class="muted">language: {{ cfg.ocr_lang }}</span>{% else %}<span class="pill bad">Not installed</span> <span class="muted">The Docker image includes it. Locally, install tesseract and poppler.</span>{% endif %}</div>
+        <div>Automatic summaries</div><div>{{ cfg.summarize_days_before }} day{{ '' if cfg.summarize_days_before == 1 else 's' }} before a chapter is due, unless a course is set to summarize on add</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-section-head"><span class="badge-icon">{{ icon('bell', 18) }}</span><h2>Notifications</h2></div>
+    <div class="card-body">
+      <div class="kv">
+        <div>Pushover</div>
+        <div>{% if pushover_ready %}<span class="pill ok">Configured</span>{% else %}<span class="pill bad">Not configured</span> <span class="muted">Set PUSHOVER_APP_TOKEN and PUSHOVER_USER_KEY.</span>{% endif %}</div>
+        <div>Summary complete</div><div>A ping when a summary finishes, if the course has it turned on</div>
+        <div>Reading reminder</div><div>{{ cfg.notify_days_before }} day{{ '' if cfg.notify_days_before == 1 else 's' }} before the due date, from {{ cfg.notify_time.strftime('%H:%M') }}</div>
+        <div>Notification links</div><div>{{ cfg.base_url or 'Off. Set READCUE_BASE_URL to add an “Open summary” link.' }}</div>
+      </div>
+      <form method="post" action="{{ url_for('test_push') }}" style="margin-top:14px"><button class="btn btn-sm" {{ '' if pushover_ready else 'disabled' }}>{{ icon('bell', 14) }} Send test notification</button></form>
+    </div>
+  </section>
+</div>
+{% endblock %}

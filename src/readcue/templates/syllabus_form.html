@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Import syllabus · readcue{% endblock %}
+{% block content %}
+<div style="max-width:720px;margin-inline:auto">
+  <a class="crumb" href="{{ url_for('index') }}">{{ icon('arrow-left', 16) }} Dashboard</a>
+  <div class="page-head" style="margin-bottom:20px">
+    <div>
+      <h1>Import syllabus</h1>
+      <p class="lede">{{ course.name }}. {{ model }} will find every chapter reading and its due date. You'll review them before anything is saved.</p>
+    </div>
+  </div>
+
+  <form class="card card-pad form-stack" method="post" enctype="multipart/form-data" data-busy="Reading syllabus… this can take a minute">
+    <div>
+      <span class="field-label">Syllabus</span>
+      <label class="dropzone">
+        <span class="dz-icon">{{ icon('upload', 22) }}</span>
+        <strong>Drop your syllabus here, or click to browse</strong>
+        <span class="muted">PDF, Word, TXT or Markdown. Scans and photos (PNG, JPG, TIFF) are read with OCR.</span>
+        <input type="file" name="file" multiple accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.tif,.tiff,.bmp">
+      </label>
+      <ul class="file-list"></ul>
+    </div>
+
+    <details class="more">
+      <summary>{{ icon('chevron-down', 16) }} Or paste the text instead</summary>
+      <div class="body">
+        <textarea name="text" placeholder="Paste the schedule section of your syllabus…" aria-label="Syllabus text"></textarea>
+        <p class="hint">The schedule section is enough; the rest of the syllabus isn't needed.</p>
+      </div>
+    </details>
+
+    <button class="btn btn-primary" type="submit">{{ icon('zap', 16) }} Find my chapters</button>
+  </form>
+</div>
+{% endblock %}

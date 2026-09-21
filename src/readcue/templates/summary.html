@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ chapter.course_name }} ch. {{ chapter.number }} · readcue{% endblock %}
+{% block head %}{% if chapter.summary_status == 'running' or (chapter.summary_status == 'pending' and not waiting_until and not unscheduled) %}<meta http-equiv="refresh" content="5">{% endif %}{% endblock %}
+{% block content %}
+<div class="reader">
+  <a class="crumb" href="{{ url_for('index') }}">{{ icon('arrow-left', 16) }} Dashboard</a>
+
+  <header class="reader-head">
+    <h3>{{ chapter.course_name }}</h3>
+    <h1>Chapter {{ chapter.number }}{% if chapter.title %}: {{ chapter.title }}{% endif %}</h1>
+    <div class="chips">
+      {% if reading %}<span class="chip accent">{{ icon('calendar', 13) }} Due {{ reading.due|nice_date }} · {{ reading.due|relative_day(today)|lower }}</span>
+      {% else %}<span class="chip">Not on the schedule</span>{% endif %}
+      {% if summary %}<span class="chip">{{ icon('zap', 13) }} Written by {{ summary.model }}</span><span class="chip">{{ summary.created_at[:10] }}</span>{% endif %}
+    </div>
+  </header>
+
+  {% if summary %}
+  <div class="card prose">{% for p in summary.paragraphs %}<p>{{ p }}</p>{% endfor %}</div>
+
+  <div class="section-title"><h3>Key points</h3></div>
+  <ol class="keypoints">{% for point in summary.key_points %}<li>{{ point }}</li>{% endfor %}</ol>
+
+  <div class="glossary-head">
+    <h3>Definitions <span class="chip">{{ summary.definitions|length }}</span></h3>
+    {% if summary.definitions|length > 6 %}<input type="search" placeholder="Filter terms…" data-filter-terms aria-label="Filter definitions">{% endif %}
+  </div>
+  {% if summary.definitions %}
+  <dl class="glossary" style="margin:0">{% for d in summary.definitions %}<div class="term-card"><dt>{{ d.term }}</dt><dd>{{ d.definition }}</dd></div>{% endfor %}</dl>
+  {% else %}<p class="muted">No defined terms were found in this chapter.</p>{% endif %}
+
+  {% elif chapter.summary_status == 'error' %}
+  <div class="card state error">
+    <span class="state-icon">{{ icon('alert-circle', 22) }}</span>
+    <div><h2>The summary failed</h2><p class="muted">{{ chapter.summary_error }}</p><p class="muted">Nothing was lost: the chapter is stored, so you can retry.</p></div>
+  </div>
+
+  {% elif waiting_until %}
+  <div class="card state">
+    <span class="state-icon">{{ icon('clock', 22) }}</span>
+    <div><h2>Scheduled for {{ waiting_until|nice_date }}</h2>
+    <p class="muted">The summary is written {{ sum_days }} days before the chapter is due. Until then nothing is spent on it, in case the schedule changes. You'll be notified when it's done.</p></div>
+  </div>
+
+  {% elif unscheduled %}
+  <div class="card state">
+    <span class="state-icon">{{ icon('calendar', 22) }}</span>
+    <div><h2>This chapter isn't on the schedule</h2>
+    <p class="muted">It won't be summarized automatically. Add its due date on the dashboard, or summarize it now.</p></div>
+  </div>
+
+  {% else %}
+  <div class="card state busy">
+    <span class="state-icon"><span class="spinner"></span></span>
+    <div><h2>{{ 'Writing the summary…' if chapter.summary_status == 'running' else 'In the queue…' }}</h2><p class="muted">This page refreshes by itself.</p></div>
+  </div>
+  {% endif %}
+
+  <div class="actions" style="margin-top:28px">
+    {% if summary %}<a class="btn" href="{{ url_for('summary_markdown', chapter_id=chapter.id) }}">{{ icon('download', 15) }} Download .md</a>{% endif %}
+    <form method="post" action="{{ url_for('chapter_resummarize', chapter_id=chapter.id) }}">
+      <button class="btn {{ 'btn-primary' if (waiting_until or unscheduled or chapter.summary_status == 'error') }}">{{ icon('refresh' if (summary or chapter.summary_status == 'error') else 'zap', 15) }} {{ 'Regenerate' if summary else ('Summarize now' if (waiting_until or unscheduled) else 'Retry') }}</button>
+    </form>
+    <form method="post" action="{{ url_for('chapter_delete', chapter_id=chapter.id) }}" data-confirm="Delete this chapter and its summary?">
+      <button class="btn btn-ghost btn-danger">{{ icon('trash', 15) }} Delete chapter</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
