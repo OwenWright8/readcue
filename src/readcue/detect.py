@@ -86,6 +86,11 @@ def is_contents_page(text: str) -> bool:
     return chapter_lines >= 4 or numbered_lines >= 8
 
 
+def is_back_matter(text: str) -> bool:
+    """Does this page open an appendix, glossary, index and the like?"""
+    return any(_BACK_MATTER.match(line) and len(line) < 40 for line in _lines(text, 3))
+
+
 def chapter_marks(text: str, wanted: set[int]) -> set[int]:
     """Chapter numbers whose heading appears in the first lines of this page."""
     marks = set()
@@ -155,11 +160,7 @@ def detect_chapters(
                 starts[n] = (page_number, "title")
                 break
 
-    back_matter = [
-        page_number
-        for page_number, text in enumerate(pages, 1)
-        if any(_BACK_MATTER.match(line) and len(line) < 40 for line in _lines(text, 3))
-    ]
+    back_matter = [page_number for page_number, text in enumerate(pages, 1) if is_back_matter(text)]
     boundaries = sorted({page for page, _ in starts.values()})
 
     results = []

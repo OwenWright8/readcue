@@ -474,6 +474,15 @@ class Database:
             row = conn.execute("SELECT outline FROM books WHERE id = ?", (book_id,)).fetchone()
         return [(title, page) for title, page in json.loads(row["outline"])] if row else []
 
+    def get_book_page_range(self, book_id: int, first: int, last: int) -> dict[int, str]:
+        """Text of pages first..last (1-based, inclusive) that have been read, keyed by page number."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT page, text FROM book_pages WHERE book_id = ? AND page BETWEEN ? AND ?",
+                (book_id, first, last),
+            ).fetchall()
+        return {row["page"]: row["text"] for row in rows}
+
     def get_book_page_texts(self, book_id: int, page_count: int) -> list[str]:
         """Text of every page in order (pages[0] is page 1); a page that wasn't read is an empty string."""
         pages = [""] * page_count

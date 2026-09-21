@@ -33,6 +33,7 @@ from .extract import MAX_TEXT_CHARS, extract_text, normalize_text
 from .llm import make_provider
 from .llm.base import LLMProvider
 from .notify import DEVICES_SETTING, PushoverNotifier, notifier_for
+from .pagecheck import check_range
 from .syllabus import extract_schedule
 
 MAX_PASTED_BYTES = 20 * 1024 * 1024  # non-file form fields, i.e. pasted text
@@ -430,6 +431,23 @@ def create_app(
             )
             rows = [{"found": f, "reading": readings[f.number]} for f in found]
         return render_template("book.html", book=book, rows=rows, today=today_fn())
+
+    @app.get("/books/<int:book_id>/check")
+    def book_check(book_id: int):
+        """JSON for the "Check pages" panel: the pages around a proposed chapter range."""
+        book = db.get_book(book_id)
+        if book.status != "ready":
+            return jsonify(error="The book is still being read."), 409
+        try:
+            start, end = int(request.args["start"]), int(request.args["end"])
+            number = int(request.args.get("number") or 0)
+        except (KeyError, ValueError):
+            return jsonify(error="Enter both the first and last page."), 400
+        pages = db.get_book_page_range(book.id, start - 1, end + 1)
+        try:
+            return jsonify(check_range(pages, book.page_count, start, end, number))
+        except ValueError as e:
+            return jsonify(error=str(e)), 400
 
     @app.post("/books/<int:book_id>/split")
     def book_split(book_id: int):

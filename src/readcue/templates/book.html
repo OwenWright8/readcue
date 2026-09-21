@@ -47,8 +47,8 @@
 
   <form method="post" action="{{ url_for('book_split', book_id=book.id) }}">
     <input type="hidden" name="count" value="{{ rows|length }}">
-    <section class="card">
-      <div class="split head"><span></span><span>Chapter</span><span>First page</span><span>Last page</span></div>
+    <section class="card" data-check-url="{{ url_for('book_check', book_id=book.id) }}">
+      <div class="split head"><span></span><span>Chapter</span><span>First page</span><span>Last page</span><span></span></div>
       {% for row in rows %}
       {% set f = row.found %}
       {% set exists = row.reading.chapter_id is not none %}
@@ -65,10 +65,12 @@
         </div>
         <input type="number" name="start-{{ loop.index0 }}" value="{{ f.start or '' }}" min="1" max="{{ book.page_count }}" placeholder="page" aria-label="First page of chapter {{ f.number }}">
         <input type="number" name="end-{{ loop.index0 }}" value="{{ f.end or '' }}" min="1" max="{{ book.page_count }}" placeholder="page" aria-label="Last page of chapter {{ f.number }}">
+        <button type="button" class="btn btn-sm" data-check aria-expanded="false" title="Look at the pages in and around this chapter">{{ icon('eye', 14) }} Check pages</button>
       </div>
+      <div class="pagecheck" data-number="{{ f.number }}" hidden></div>
       {% endfor %}
     </section>
-    <p class="hint">Page numbers here are the PDF's own page numbers (page 1 is the cover), not the numbers printed on the pages.</p>
+    <p class="hint">Use <strong>Check pages</strong> on a chapter to see its first and last page and the pages just outside it, and to nudge either end. Page numbers are the PDF's own (page 1 is the cover), not the numbers printed on the pages.</p>
     <div class="actions" style="margin-top:20px">
       <button class="btn btn-primary" type="submit">{{ icon('check', 16) }} Create chapters</button>
     </div>

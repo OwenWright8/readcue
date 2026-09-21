@@ -239,3 +239,37 @@ def test_dashboard_offers_the_textbook_and_links_to_it(client, db, cfg, course):
 def test_unknown_books_are_404(client):
     assert client.get("/books/999").status_code == 404
     assert client.get("/courses/999/books/new").status_code == 404
+
+
+def test_the_check_endpoint_returns_the_pages_around_a_range(client, db, cfg, course):
+    upload_book(client, course)
+    read_book(db, cfg)
+    body = client.get("/books/1/check?start=9&end=14&number=2").get_json()
+    assert [c["page"] for c in body["cards"]] == [8, 9, 14, 15]
+    assert body["pages"] == 6 and body["cards"][1]["note"] == "Opens Chapter 2."
+
+
+def test_the_check_endpoint_rejects_bad_input_with_a_message(client, db, cfg, course):
+    upload_book(client, course)
+    read_book(db, cfg)
+    assert client.get("/books/1/check?start=9").status_code == 400
+    assert (
+        client.get("/books/1/check?start=x&end=3").get_json()["error"]
+        == "Enter both the first and last page."
+    )
+    resp = client.get("/books/1/check?start=9&end=999")
+    assert resp.status_code == 400 and "don't fit a 34-page book" in resp.get_json()["error"]
+
+
+def test_the_check_endpoint_waits_for_the_book_and_404s_for_unknown_ones(client, db, cfg, course):
+    upload_book(client, course)  # queued, not read yet
+    assert client.get("/books/1/check?start=1&end=2").status_code == 409
+    assert client.get("/books/999/check?start=1&end=2").status_code == 404
+
+
+def test_each_review_row_has_a_check_pages_button_and_panel(client, db, cfg, course):
+    upload_book(client, course)
+    read_book(db, cfg)
+    page = client.get("/books/1").data.decode()
+    assert page.count("data-check ") == 5 and page.count('class="pagecheck"') == 5
+    assert 'data-check-url="/books/1/check"' in page
