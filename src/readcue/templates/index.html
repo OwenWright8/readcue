@@ -73,6 +73,7 @@
               <span class="choice-body"><span class="top"><span class="icon-wrap">{{ icon('zap', 16) }}</span>Summarize now</span>
               <p>As soon as a chapter is added.</p></span></label>
             <label class="switch"><input type="checkbox" name="notify_on_summary" {{ 'checked' if course.notify_on_summary }}><span class="track"></span><span>Notify me when a summary is complete</span></label>
+            <label class="switch"><input type="checkbox" name="include_figures" {{ 'checked' if course.include_figures }} {{ '' if figures_supported else 'disabled' }}><span class="track"></span><span>Clip key figures into summaries<small>{% if figures_supported %}Claude picks the few figures that matter most. Uses extra tokens, and needs the chapter's original pages.{% else %}Needs the Claude API; local Ollama models can't look at pictures.{% endif %}</small></span></label>
             <button class="btn btn-primary btn-sm">Save</button>
           </form>
         </div>
@@ -136,6 +137,7 @@
           <form class="inline" method="post" action="{{ url_for('chapter_resummarize', chapter_id=r.chapter_id) }}"><button class="btn btn-sm">{{ icon('refresh', 14) }} Retry</button></form>
           <a class="btn btn-sm btn-ghost" href="{{ url_for('summary_page', chapter_id=r.chapter_id) }}">Details</a>
         {% endif %}
+        {% if r.has_pdf %}<a class="btn btn-sm btn-ghost btn-icon" href="{{ url_for('chapter_pdf', chapter_id=r.chapter_id) }}" title="Download the chapter as a PDF" aria-label="Download chapter {{ r.chapter }} as a PDF">{{ icon('download', 15) }}</a>{% endif %}
         <button type="button" class="btn btn-sm btn-ghost btn-icon" data-toggle-edit title="Edit" aria-label="Edit chapter {{ r.chapter }}" aria-expanded="false">{{ icon('edit', 15) }}</button>
       </div>
 

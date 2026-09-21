@@ -22,6 +22,7 @@ ALL_SCHEMAS = {
     "summary": schemas.SUMMARY_SCHEMA,
     "combine": schemas.COMBINE_SCHEMA,
     "syllabus": schemas.SYLLABUS_SCHEMA,
+    "figures": schemas.FIGURES_SCHEMA,
 }
 
 

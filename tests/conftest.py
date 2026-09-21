@@ -51,14 +51,18 @@ class FakeProvider:
     model = "fake-1"
     label = "fake:fake-1"
 
+    supports_images = True
+
     def __init__(self, responder, max_input_chars=100_000):
         self.responder = responder
         self.max_input_chars = max_input_chars
+        self.images: list = []
         self.calls: list[str] = []
         self.schemas: list[dict | None] = []
 
-    def complete(self, system, user, *, json_mode=False, schema=None):
+    def complete(self, system, user, *, json_mode=False, schema=None, images=None):
         self.calls.append(user)
+        self.images.append(images)
         self.schemas.append(schema)
         if callable(self.responder):
             return self.responder(user)

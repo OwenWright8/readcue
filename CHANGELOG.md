@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-09-20
+
+### Added
+- **Check pages.** On the textbook review screen, each chapter can open a panel showing the page before it, its first
+  page, its last page and the page after, with notes where something looks off (the heading is on the previous page,
+  the next page isn't a new chapter, the range runs into another chapter, pages with no readable text). Step the first
+  or last page a page at a time, show any page in full, and the panel refreshes as you type page numbers.
+- **Download a chapter as a PDF.** A chapter's original pages are now kept as a small PDF of their own, cut from the
+  textbook or taken from the PDF(s) you uploaded, with a download button on the chapter page and the dashboard.
+  The textbook PDF itself is kept until you delete the textbook, so more chapters can be created later; chapter PDFs
+  outlive it. (Books read by 1.1.0 no longer have their PDF; chapters cut from those have no download.)
+- **Key figures in summaries.** An opt-in per-course setting (Claude only). After a summary is written, Claude looks at
+  the chapter's pages and the summary and picks the few figures that are especially important, with a box around each;
+  readcue clips them out of the pages and shows them, with a caption and why they matter, in the summary. Each can be
+  removed. Boxes from a vision model are approximate, so clips are padded slightly. Needs the chapter's original pages.
+
 ## [1.1.0] - 2026-09-20
 
 ### Added
@@ -69,6 +85,7 @@ First release.
 - `readcue backup` writes a consistent copy of the database while the app is running.
 - Limits on upload size, extracted text, Word-document expansion and concurrent OCR.
 
+[1.2.0]: https://github.com/OwenWright8/readcue/releases/tag/v1.2.0
 [1.1.0]: https://github.com/OwenWright8/readcue/releases/tag/v1.1.0
 [1.0.1]: https://github.com/OwenWright8/readcue/releases/tag/v1.0.1
 [1.0.0]: https://github.com/OwenWright8/readcue/releases/tag/v1.0.0

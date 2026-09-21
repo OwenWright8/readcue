@@ -19,6 +19,25 @@
   {% if summary %}
   <div class="card prose">{% for p in summary.paragraphs %}<p>{{ p }}</p>{% endfor %}</div>
 
+  {% if figures %}
+  <div class="section-title"><h3>Key figures <span class="chip">{{ figures|length }}</span></h3></div>
+  <div class="figures">
+    {% for f in figures %}
+    <figure class="figure-card">
+      <a href="{{ url_for('figure_image', figure_id=f.id) }}" target="_blank" rel="noopener"><img src="{{ url_for('figure_image', figure_id=f.id) }}" alt="{{ f.caption or 'Key figure' }}" loading="lazy"></a>
+      <figcaption>
+        <strong>{{ f.caption or 'Key figure' }}</strong>
+        {% if f.why %}<span>{{ f.why }}</span>{% endif %}
+        <small>Chapter PDF page {{ f.page }}</small>
+      </figcaption>
+      <form method="post" action="{{ url_for('figure_delete', figure_id=f.id) }}" data-confirm="Remove this figure from the summary?"><button class="btn btn-sm btn-ghost btn-danger" title="Remove this figure">{{ icon('x', 14) }} Remove</button></form>
+    </figure>
+    {% endfor %}
+  </div>
+  {% elif wants_figures and not chapter.has_pdf %}
+  <p class="hint" style="margin-top:20px">{{ icon('image', 14) }} Key figures are turned on for this course, but this chapter has no original pages to pick them from. Add it from a textbook or as a PDF.</p>
+  {% endif %}
+
   <div class="section-title"><h3>Key points</h3></div>
   <ol class="keypoints">{% for point in summary.key_points %}<li>{{ point }}</li>{% endfor %}</ol>
 
@@ -58,7 +77,8 @@
   {% endif %}
 
   <div class="actions" style="margin-top:28px">
-    {% if summary %}<a class="btn" href="{{ url_for('summary_markdown', chapter_id=chapter.id) }}">{{ icon('download', 15) }} Download .md</a>{% endif %}
+    {% if chapter.has_pdf %}<a class="btn" href="{{ url_for('chapter_pdf', chapter_id=chapter.id) }}">{{ icon('download', 15) }} Chapter PDF</a>{% endif %}
+    {% if summary %}<a class="btn" href="{{ url_for('summary_markdown', chapter_id=chapter.id) }}">{{ icon('download', 15) }} Summary .md</a>{% endif %}
     <form method="post" action="{{ url_for('chapter_resummarize', chapter_id=chapter.id) }}">
       <button class="btn {{ 'btn-primary' if (waiting_until or unscheduled or chapter.summary_status == 'error') }}">{{ icon('refresh' if (summary or chapter.summary_status == 'error') else 'zap', 15) }} {{ 'Regenerate' if summary else ('Summarize now' if (waiting_until or unscheduled) else 'Retry') }}</button>
     </form>

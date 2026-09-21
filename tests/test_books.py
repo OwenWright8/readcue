@@ -22,14 +22,14 @@ def run(db, cfg):
     return process_next_book(db, cfg, threading.Event())
 
 
-def test_reads_every_page_of_a_text_book_and_removes_the_upload(db, cfg):
+def test_reads_every_page_of_a_text_book_and_keeps_the_pdf_for_later_splits(db, cfg):
     _, book_id = upload(db, cfg, book_pdf())
     assert run(db, cfg) is True
     book = db.get_book(book_id)
     assert (book.status, book.page_count, book.pages_done, book.scanned_pages) == ("ready", 34, 34, 0)
     pages = db.get_book_page_texts(book_id, book.page_count)
     assert "Chapter 2 The Cell" in pages[chapter_start(2) - 1]
-    assert not book_path(cfg, book_id).exists()  # only the extracted text is kept
+    assert book_path(cfg, book_id).is_file()  # kept: chapters are cut from it, and more can be split later
     assert run(db, cfg) is False  # nothing else queued
 
 

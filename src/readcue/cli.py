@@ -42,7 +42,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     threads = [
         threading.Thread(
             target=run_worker,
-            args=(db, lambda: make_provider(cfg), stop, wake, cfg.summarize_days_before, on_complete),
+            args=(db, lambda: make_provider(cfg), stop, wake, cfg.summarize_days_before, on_complete, cfg),
             daemon=True,
             name="worker",
         ),

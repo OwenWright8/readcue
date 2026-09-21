@@ -12,17 +12,29 @@ log = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
+Image = tuple[str, bytes]  # (label shown to the model, PNG bytes)
+
 
 class LLMProvider(Protocol):
     name: str
     model: str
     max_input_chars: int  # how much source text fits in one request, leaving room for the reply
+    supports_images: bool  # can the model look at page images?
 
     @property
     def label(self) -> str: ...
 
-    def complete(self, system: str, user: str, *, json_mode: bool = False, schema: dict | None = None) -> str:
-        """One reply. With a `schema`, providers that support it constrain the reply to that JSON shape."""
+    def complete(
+        self,
+        system: str,
+        user: str,
+        *,
+        json_mode: bool = False,
+        schema: dict | None = None,
+        images: list[Image] | None = None,
+    ) -> str:
+        """One reply. With a `schema`, providers that support it constrain the reply to that JSON shape.
+        `images` are shown to the model before the user text (only when `supports_images`)."""
 
 
 def parse_json_object(raw: str) -> dict:
@@ -60,13 +72,14 @@ def complete_structured(
     parse: Callable[[dict], T],
     *,
     schema: dict | None = None,
+    images: list[Image] | None = None,
     attempts: int = 2,
 ) -> T:
     """Ask for JSON (constrained to `schema` where the provider supports that) and run it through `parse`,
     which raises ValueError if the content is unusable. Retries once, and logs where a bad reply went wrong."""
     prompt, last_error = user, None
     for attempt in range(1, attempts + 1):
-        raw = provider.complete(system, prompt, json_mode=True, schema=schema)
+        raw = provider.complete(system, prompt, json_mode=True, schema=schema, images=images)
         try:
             return parse(parse_json_object(raw))
         except ValueError as e:

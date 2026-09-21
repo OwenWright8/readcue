@@ -61,3 +61,34 @@ Rules:
 <syllabus>
 {text}
 </syllabus>"""
+
+
+FIGURES_SYSTEM = (
+    "You look at pages from a university textbook chapter and pick out the figures that matter most. "
+    "Reply with a single JSON object and nothing else."
+)
+
+
+def figures_prompt(course: str, number: int, title: str, pages: list[int], summary: str) -> str:
+    heading = f"Chapter {number}" + (f": {title}" if title else "")
+    return f"""Course: {course}
+{heading}
+
+The chapter is summarized like this:
+{summary}
+
+You are shown pages {pages[0]} to {pages[-1]} of the chapter, each labelled "Page N". Pick the figures that are
+*especially important* for understanding the chapter's main ideas: a diagram, chart, graph, map, table or
+photograph that the explanation depends on, that a student should study, or that the summary above leans on.
+Skip decorative images, portraits, page furniture, and figures that only repeat what the text already says well.
+It is fine, and common, to pick none.
+
+Return JSON: {{"figures": [{{"page": integer, "x0": number, "y0": number, "x1": number, "y1": number,
+"caption": string, "why": string, "importance": integer}}]}}
+
+- "page" is the N from the page's label.
+- x0, y0 (top left) and x1, y1 (bottom right) are the figure's bounding box as fractions from 0 to 1 of that page
+  image's width and height. Include the whole figure with its caption and labels, and don't cut through it.
+- "caption" is a short label for the figure (under 100 characters); "why" is one sentence on why it matters.
+- "importance" is 1 to 10; use 8 or more only for figures a student really needs.
+- Return at most 3 figures, best first, and an empty list when nothing stands out."""

@@ -10,6 +10,7 @@ schemas as its `format`. Claude requires every object to list all its properties
 from __future__ import annotations
 
 _STRING = {"type": "string"}
+_NUMBER = {"type": "number"}
 _STRINGS = {"type": "array", "items": _STRING}
 
 
@@ -35,5 +36,23 @@ SYLLABUS_SCHEMA = _object(
     readings={
         "type": "array",
         "items": _object(chapter={"type": "integer"}, title=_STRING, due_date=_STRING),
+    }
+)
+
+# Figures worth clipping. Box coordinates are fractions (0 to 1) of the page image's width and height, measured
+# from its top left corner.
+FIGURES_SCHEMA = _object(
+    figures={
+        "type": "array",
+        "items": _object(
+            page={"type": "integer"},
+            x0=_NUMBER,
+            y0=_NUMBER,
+            x1=_NUMBER,
+            y1=_NUMBER,
+            caption=_STRING,
+            why=_STRING,
+            importance={"type": "integer"},
+        ),
     }
 )

@@ -7,8 +7,10 @@ import threading
 from collections.abc import Callable
 from datetime import date, timedelta
 
+from .config import Config
 from .db import Database
 from .errors import NotFoundError, ReadcueError
+from .figures import extract_figures
 from .llm.base import LLMProvider
 from .models import Chapter, Summary
 from .summarize import summarize_chapter
@@ -23,6 +25,7 @@ def process_next(
     today: date,
     lead_days: int,
     on_complete: Callable[[Chapter, Summary], object] | None = None,
+    cfg: Config | None = None,
 ) -> bool:
     """Summarize the oldest chapter that is due within `lead_days` days (or that the user asked for).
 
@@ -55,6 +58,8 @@ def process_next(
                 log.warning("Couldn't send the summary-complete notification: %s", e)
             except Exception:
                 log.exception("Summary-complete notification failed")
+        if cfg is not None:
+            _clip_key_figures(db, cfg, provider, chapter, summary)
     except ReadcueError as e:
         log.warning("Summary failed for %s ch. %s: %s", chapter.course_name, chapter.number, e)
         db.mark_summary_error(chapter.id, str(e))
@@ -64,6 +69,27 @@ def process_next(
     return True
 
 
+def _clip_key_figures(
+    db: Database, cfg: Config, provider: LLMProvider, chapter: Chapter, summary: Summary
+) -> None:
+    """After a summary: pick and clip the chapter's key figures, if the course wants them and it's possible.
+
+    Never affects the summary itself: the summary is already saved, and a failure here is only logged.
+    """
+    try:
+        if not db.get_course(chapter.course_id).include_figures or not provider.supports_images:
+            return
+        if not db.get_chapter(chapter.id).has_pdf:
+            return
+        extract_figures(db, cfg, provider, chapter, summary)
+    except NotFoundError:
+        pass  # deleted mid-run
+    except ReadcueError as e:
+        log.warning("Couldn't pick key figures for chapter %s: %s", chapter.id, e)
+    except Exception:
+        log.exception("Picking key figures failed for chapter %s", chapter.id)
+
+
 def run_worker(
     db: Database,
     provider_factory: Callable[[], LLMProvider],
@@ -71,11 +97,12 @@ def run_worker(
     wake: threading.Event,
     lead_days: int,
     on_complete: Callable[[Chapter, Summary], object] | None = None,
+    cfg: Config | None = None,
 ) -> None:
     db.reset_running()
     while not stop.is_set():
         if not process_next(
-            db, provider_factory, today=date.today(), lead_days=lead_days, on_complete=on_complete
+            db, provider_factory, today=date.today(), lead_days=lead_days, on_complete=on_complete, cfg=cfg
         ):
             wake.wait(timeout=10)
             wake.clear()

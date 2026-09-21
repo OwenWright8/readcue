@@ -1,11 +1,12 @@
 """Run inside the Docker image: prove OCR really reads text from a rendered page and from a photo."""
 
+import struct
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-from readcue import ocr
+from readcue import ocr, render
 from readcue.extract import extract_text
 
 TEXT = "The nucleus stores DNA"
@@ -60,6 +61,18 @@ def main() -> int:
     print("Photo OCR:", photo_text)
     assert "nucleus" in photo_text.lower(), photo_text
     print("OCR OK")
+
+    # Page rendering and clipping, which key figures rely on.
+    with tempfile.TemporaryDirectory() as tmp:
+        source = Path(tmp) / "page.pdf"
+        source.write_bytes(pdf)
+        assert render.page_size_px(source, 1, 100) == (850, 1100)
+        clip = render.render_page(source, 1, 200, crop=(100, 200, 400, 300))
+        assert clip[:8] == b"\x89PNG\r\n\x1a\n"
+        width, height = struct.unpack(">II", clip[16:24])
+        print("Clip size:", width, "x", height)
+        assert (width, height) == (400, 300)
+    print("Render and clip OK")
     return 0
 
 

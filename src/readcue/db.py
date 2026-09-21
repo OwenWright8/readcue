@@ -11,7 +11,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 from .errors import NotFoundError, ReadcueError
-from .models import SUMMARY_MODES, Book, Chapter, Course, Reading, Summary
+from .models import SUMMARY_MODES, Book, Chapter, Course, Figure, Reading, Summary
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS settings (
@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS courses (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL UNIQUE COLLATE NOCASE,
     summary_mode TEXT NOT NULL DEFAULT 'scheduled',
-    notify_on_summary INTEGER NOT NULL DEFAULT 1
+    notify_on_summary INTEGER NOT NULL DEFAULT 1,
+    include_figures INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS readings (
     id INTEGER PRIMARY KEY,
@@ -43,7 +44,15 @@ CREATE TABLE IF NOT EXISTS chapters (
     summary_status TEXT NOT NULL DEFAULT 'pending',
     summary_error TEXT NOT NULL DEFAULT '',
     summarize_now INTEGER NOT NULL DEFAULT 0,
+    has_pdf INTEGER NOT NULL DEFAULT 0,
     UNIQUE (course_id, number)
+);
+CREATE TABLE IF NOT EXISTS figures (
+    id INTEGER PRIMARY KEY,
+    chapter_id INTEGER NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+    page INTEGER NOT NULL,
+    caption TEXT NOT NULL DEFAULT '',
+    why TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS summaries (
     chapter_id INTEGER PRIMARY KEY REFERENCES chapters(id) ON DELETE CASCADE,
@@ -92,8 +101,10 @@ class Database:
             # Columns added after the first release, for databases that predate them.
             for table, column, ddl in [
                 ("chapters", "summarize_now", "INTEGER NOT NULL DEFAULT 0"),
+                ("chapters", "has_pdf", "INTEGER NOT NULL DEFAULT 0"),
                 ("courses", "summary_mode", "TEXT NOT NULL DEFAULT 'scheduled'"),
                 ("courses", "notify_on_summary", "INTEGER NOT NULL DEFAULT 1"),
+                ("courses", "include_figures", "INTEGER NOT NULL DEFAULT 0"),
             ]:
                 existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
                 if column not in existing:
@@ -152,11 +163,17 @@ class Database:
             row = conn.execute(f"{self._COURSE_SELECT} WHERE name = ?", (name,)).fetchone()
         return self._course(row)
 
-    _COURSE_SELECT = "SELECT id, name, summary_mode, notify_on_summary FROM courses"
+    _COURSE_SELECT = "SELECT id, name, summary_mode, notify_on_summary, include_figures FROM courses"
 
     @staticmethod
     def _course(row: sqlite3.Row) -> Course:
-        return Course(row["id"], row["name"], row["summary_mode"], bool(row["notify_on_summary"]))
+        return Course(
+            row["id"],
+            row["name"],
+            row["summary_mode"],
+            bool(row["notify_on_summary"]),
+            bool(row["include_figures"]),
+        )
 
     def get_course(self, course_id: int) -> Course:
         with self._conn() as conn:
@@ -170,7 +187,14 @@ class Database:
             rows = conn.execute(f"{self._COURSE_SELECT} ORDER BY name").fetchall()
         return [self._course(r) for r in rows]
 
-    def update_course_settings(self, course_id: int, summary_mode: str, notify_on_summary: bool) -> None:
+    def update_course_settings(
+        self,
+        course_id: int,
+        summary_mode: str,
+        notify_on_summary: bool,
+        include_figures: bool | None = None,
+    ) -> None:
+        """`include_figures=None` leaves that setting as it was."""
         if summary_mode not in SUMMARY_MODES:
             raise ReadcueError(f"Summary timing must be one of {', '.join(SUMMARY_MODES)}.")
         with self._conn() as conn:
@@ -178,6 +202,10 @@ class Database:
                 "UPDATE courses SET summary_mode = ?, notify_on_summary = ? WHERE id = ?",
                 (summary_mode, int(notify_on_summary), course_id),
             )
+            if include_figures is not None:
+                conn.execute(
+                    "UPDATE courses SET include_figures = ? WHERE id = ?", (int(include_figures), course_id)
+                )
 
     def delete_course(self, course_id: int) -> None:
         with self._conn() as conn:
@@ -219,7 +247,7 @@ class Database:
 
     _READING_SELECT = """
         SELECT r.id, r.course_id, c.name AS course_name, r.chapter, r.title, r.due_date,
-               ch.id AS chapter_id, ch.summary_status, ch.summarize_now,
+               ch.id AS chapter_id, ch.summary_status, ch.summarize_now, ch.has_pdf,
                c.summary_mode, c.notify_on_summary,
                (SELECT group_concat(kind) FROM notifications n WHERE n.reading_id = r.id) AS kinds
         FROM readings r
@@ -241,6 +269,7 @@ class Database:
             summarize_now=bool(row["summarize_now"]),
             summary_mode=row["summary_mode"],
             notify_on_summary=bool(row["notify_on_summary"]),
+            has_pdf=bool(row["has_pdf"]),
             notifications=frozenset((row["kinds"] or "").split(",")) - {""},
         )
 
@@ -280,7 +309,7 @@ class Database:
                 return int(cur.lastrowid)
             conn.execute(
                 "UPDATE chapters SET title = ?, source = ?, text = ?, added_at = ?,"
-                " summary_status = 'pending', summary_error = '', summarize_now = 0 WHERE id = ?",
+                " summary_status = 'pending', summary_error = '', summarize_now = 0, has_pdf = 0 WHERE id = ?",
                 (title, source, text, _now(), row["id"]),
             )
             conn.execute("DELETE FROM summaries WHERE chapter_id = ?", (row["id"],))
@@ -298,6 +327,7 @@ class Database:
             summary_error=row["summary_error"],
             summarize_now=bool(row["summarize_now"]),
             summary_mode=row["summary_mode"],
+            has_pdf=bool(row["has_pdf"]),
             text=row["text"] if with_text else "",
         )
 
@@ -312,6 +342,15 @@ class Database:
         if row is None:
             raise NotFoundError("Chapter not found.")
         return self._chapter(row, with_text)
+
+    def set_chapter_pdf(self, chapter_id: int, has_pdf: bool) -> None:
+        with self._conn() as conn:
+            conn.execute("UPDATE chapters SET has_pdf = ? WHERE id = ?", (int(has_pdf), chapter_id))
+
+    def chapter_ids(self, course_id: int) -> list[int]:
+        with self._conn() as conn:
+            rows = conn.execute("SELECT id FROM chapters WHERE course_id = ?", (course_id,)).fetchall()
+        return [row["id"] for row in rows]
 
     def delete_chapter(self, chapter_id: int) -> None:
         with self._conn() as conn:
@@ -491,6 +530,38 @@ class Database:
                 if 1 <= row["page"] <= page_count:
                     pages[row["page"] - 1] = row["text"]
         return pages
+
+    # -- key figures -----------------------------------------------------------------------
+
+    def add_figure(self, chapter_id: int, page: int, caption: str, why: str) -> int:
+        with self._conn() as conn:
+            cur = conn.execute(
+                "INSERT INTO figures (chapter_id, page, caption, why) VALUES (?, ?, ?, ?)",
+                (chapter_id, page, caption, why),
+            )
+            return int(cur.lastrowid)
+
+    def list_figures(self, chapter_id: int) -> list[Figure]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM figures WHERE chapter_id = ? ORDER BY id", (chapter_id,)
+            ).fetchall()
+        return [Figure(r["id"], r["chapter_id"], r["page"], r["caption"], r["why"]) for r in rows]
+
+    def get_figure(self, figure_id: int) -> Figure:
+        with self._conn() as conn:
+            r = conn.execute("SELECT * FROM figures WHERE id = ?", (figure_id,)).fetchone()
+        if r is None:
+            raise NotFoundError("Figure not found.")
+        return Figure(r["id"], r["chapter_id"], r["page"], r["caption"], r["why"])
+
+    def delete_figure(self, figure_id: int) -> None:
+        with self._conn() as conn:
+            conn.execute("DELETE FROM figures WHERE id = ?", (figure_id,))
+
+    def delete_figures(self, chapter_id: int) -> None:
+        with self._conn() as conn:
+            conn.execute("DELETE FROM figures WHERE chapter_id = ?", (chapter_id,))
 
     # -- notifications ---------------------------------------------------------------------
 

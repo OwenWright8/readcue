@@ -15,6 +15,7 @@ Transport = Callable[[str, bytes, dict[str, str], float], tuple[int, bytes]]
 
 class OllamaProvider:
     name = "ollama"
+    supports_images = False  # most local models can't look at pictures; use Claude for key figures
 
     def __init__(self, cfg: Config, transport: Transport = http.post):
         host = cfg.ollama_host.rstrip("/")
@@ -32,7 +33,17 @@ class OllamaProvider:
     def label(self) -> str:
         return f"ollama:{self.model}"
 
-    def complete(self, system: str, user: str, *, json_mode: bool = False, schema: dict | None = None) -> str:
+    def complete(
+        self,
+        system: str,
+        user: str,
+        *,
+        json_mode: bool = False,
+        schema: dict | None = None,
+        images: list | None = None,
+    ) -> str:
+        if images:
+            raise LLMError("Ollama models are used as text-only here; key figures need Claude.")
         # A schema constrains the reply to that shape (Ollama 0.5+); otherwise plain JSON mode.
         reply_format = schema if schema is not None else ("json" if json_mode else None)
         status, raw = self._chat(system, user, reply_format)

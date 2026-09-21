@@ -77,16 +77,26 @@ def test_courses_default_to_scheduled_with_notifications_on(db):
 
 
 def test_database_from_before_course_settings_is_migrated(tmp_path):
+    import re
+
     path = tmp_path / "old.db"
-    old = SCHEMA.replace(
-        "    summary_mode TEXT NOT NULL DEFAULT 'scheduled',\n    notify_on_summary INTEGER NOT NULL DEFAULT 1\n",
-        "    x INTEGER\n",
-    ).replace("name TEXT NOT NULL UNIQUE COLLATE NOCASE,", "name TEXT NOT NULL UNIQUE COLLATE NOCASE,")
+    # The schema as it was before the course settings existed: those columns simply aren't there.
+    old = re.sub(
+        r",\n    summary_mode .*?include_figures INTEGER NOT NULL DEFAULT 0\n", "\n", SCHEMA, flags=re.S
+    )
+    assert (
+        "include_figures" not in old
+        and "notify_on_summary" not in old.split("CREATE TABLE IF NOT EXISTS readings")[0]
+    )
     with sqlite3.connect(path) as conn:
         conn.executescript(old)
         conn.execute("INSERT INTO courses (name) VALUES ('BIO 101')")
     course = Database(path).list_courses()[0]
-    assert (course.summary_mode, course.notify_on_summary) == ("scheduled", True)
+    assert (course.summary_mode, course.notify_on_summary, course.include_figures) == (
+        "scheduled",
+        True,
+        False,
+    )
 
 
 # ---- the web flow ----------------------------------------------------------------------

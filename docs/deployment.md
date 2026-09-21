@@ -160,10 +160,17 @@ location / {
 `READCUE_BASE_URL` matters here: it tells the app that requests whose `Origin` is your public address are legitimate,
 which stays true even if your proxy rewrites the `Host` header.
 
+## Disk space
+
+Alongside the database, readcue stores files in the data volume: each textbook's original PDF (can be hundreds of MB, freed
+when you delete the textbook), a small PDF per chapter, and any clipped key figures. Check `docker system df -v` or the
+volume's size occasionally; deleting a textbook you've finished with is the big win.
+
 ## Backups
 
-The data is one SQLite file. Don't copy it with `docker cp` while the app runs; use the built-in backup, which
-is consistent even mid-write:
+The database is one SQLite file (chapter text, summaries, settings). Don't copy it with `docker cp` while the app runs; use the
+built-in backup, which is consistent even mid-write. It doesn't include the stored PDFs and figures; back up the data volume
+itself if you want those:
 
 ```bash
 docker compose exec readcue readcue backup                    # writes /data/backups/readcue-<timestamp>.db, keeps the newest 14

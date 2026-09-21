@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hmac
+import logging
 import os
 import re
+import shutil
 import threading
 from collections.abc import Callable, Sequence
 from datetime import date, timedelta
@@ -20,6 +22,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_file,
     url_for,
 )
 
@@ -30,11 +33,15 @@ from .db import Database
 from .detect import detect_chapters
 from .errors import NotFoundError, NotifyError, ReadcueError
 from .extract import MAX_TEXT_CHARS, extract_text, normalize_text
+from .figures import clear_figures, figure_dir, figure_path
 from .llm import make_provider
 from .llm.base import LLMProvider
 from .notify import DEVICES_SETTING, PushoverNotifier, notifier_for
 from .pagecheck import check_range
+from .pdfs import chapter_pdf_path, download_name, merge_pdfs, slice_pdf
 from .syllabus import extract_schedule
+
+log = logging.getLogger(__name__)
 
 MAX_PASTED_BYTES = 20 * 1024 * 1024  # non-file form fields, i.e. pasted text
 
@@ -105,8 +112,27 @@ def create_app(
     app.jinja_env.filters["month_abbr"] = lambda d: f"{d:%b}"
     app.jinja_env.filters["short_date"] = lambda d: f"{d:%b} {d.day}"
 
-    def uploaded_text(pages: str | None = None) -> tuple[str, str]:
-        """Text from the uploaded file(s) or the paste box, and a short description of the source.
+    def refresh_chapter_pdf(chapter_id: int, write: Callable[[Path], None] | None = None) -> None:
+        """Replace the chapter's stored PDF (or just remove it when `write` is None).
+
+        A failure here only means no download button; the chapter itself is already saved.
+        """
+        clear_figures(db, cfg, chapter_id)  # the clips belong to the old pages
+        path = chapter_pdf_path(cfg, chapter_id)
+        path.unlink(missing_ok=True)
+        db.set_chapter_pdf(chapter_id, False)
+        if write is None:
+            return
+        try:
+            write(path)
+            db.set_chapter_pdf(chapter_id, True)
+        except ReadcueError as e:
+            log.warning("Couldn't keep a PDF for chapter %s: %s", chapter_id, e)
+            path.unlink(missing_ok=True)
+
+    def uploaded_text(pages: str | None = None) -> tuple[str, str, list[bytes]]:
+        """Text from the uploaded file(s) or the paste box, a short description of the source, and the PDF
+        bytes (when everything uploaded was a PDF, so the chapter's pages can be kept).
 
         Several files (say, one photo per page) are read in filename order and joined.
         """
@@ -117,13 +143,13 @@ def create_app(
         if files:
             if pages and len(files) > 1:
                 raise ReadcueError("A page range only works with a single PDF.")
-            text = "\n\n".join(
-                extract_text(f.read(), f.filename, pages, ocr_lang=cfg.ocr_lang) for f in files
-            )
+            blobs = [(f.filename, f.read()) for f in files]
+            text = "\n\n".join(extract_text(data, name, pages, ocr_lang=cfg.ocr_lang) for name, data in blobs)
             extra = f" (+{len(files) - 1} more)" if len(files) > 1 else ""
-            return text, files[0].filename + extra
+            all_pdf = all(name.lower().endswith(".pdf") for name, _ in blobs)
+            return text, files[0].filename + extra, [data for _, data in blobs] if all_pdf else []
         if pasted:
-            return normalize_text(pasted), "pasted text"
+            return normalize_text(pasted), "pasted text", []
         raise ReadcueError("Choose a file or paste the text.")
 
     # -- guards ----------------------------------------------------------------------------
@@ -213,6 +239,7 @@ def create_app(
             today=today,
             lead=timedelta(days=cfg.notify_days_before),
             sum_days=sum_days,
+            figures_supported=cfg.provider == "anthropic",
         )
 
     # -- courses and schedule --------------------------------------------------------------
@@ -224,6 +251,9 @@ def create_app(
 
     @app.post("/courses/<int:course_id>/delete")
     def course_delete(course_id: int):
+        for chapter_id in db.chapter_ids(course_id):
+            chapter_pdf_path(cfg, chapter_id).unlink(missing_ok=True)
+            shutil.rmtree(figure_dir(cfg, chapter_id), ignore_errors=True)
         db.delete_course(course_id)
         flash("Course deleted.", "ok")
         return redirect(url_for("index"))
@@ -235,7 +265,7 @@ def create_app(
     @app.post("/courses/<int:course_id>/syllabus")
     def syllabus_preview(course_id: int):
         course = db.get_course(course_id)
-        text, _ = uploaded_text()
+        text, _, _ = uploaded_text()
         items = extract_schedule(provider_factory(), text, today=today_fn())
         if not items:
             raise ReadcueError(
@@ -272,7 +302,10 @@ def create_app(
     def course_settings(course_id: int):
         course = db.get_course(course_id)
         db.update_course_settings(
-            course.id, request.form.get("summary_mode", ""), bool(request.form.get("notify_on_summary"))
+            course.id,
+            request.form.get("summary_mode", ""),
+            bool(request.form.get("notify_on_summary")),
+            include_figures=bool(request.form.get("include_figures")) and cfg.provider == "anthropic",
         )
         wake.set()
         flash(f"Summary settings updated for {course.name}.", "ok")
@@ -320,11 +353,13 @@ def create_app(
     def chapter_add():
         course = db.get_course(_int(request.form.get("course_id"), "Course"))
         number = _int(request.form.get("number"), "Chapter number")
-        text, source = uploaded_text(request.form.get("pages", "").strip() or None)
+        pages_spec = request.form.get("pages", "").strip() or None
+        text, source, pdfs = uploaded_text(pages_spec)
 
         reading = db.find_reading(course.id, number)
         title = request.form.get("title", "").strip() or (reading.title if reading else "")
-        db.save_chapter(course.id, number, title, text, source)
+        chapter_id = db.save_chapter(course.id, number, title, text, source)
+        refresh_chapter_pdf(chapter_id, (lambda dest: merge_pdfs(pdfs, pages_spec, dest)) if pdfs else None)
         wake.set()
         if reading is None:
             flash(
@@ -368,6 +403,8 @@ def create_app(
             else None,
             unscheduled=held_back and reading is None,
             sum_days=sum_days,
+            figures=db.list_figures(chapter_id),
+            wants_figures=db.get_course(chapter.course_id).include_figures,
         )
 
     @app.get("/summary/<int:chapter_id>.md")
@@ -379,6 +416,34 @@ def create_app(
         body = summary.to_markdown(course=chapter.course_name, chapter=chapter.number, title=chapter.title)
         return Response(body, mimetype="text/markdown")
 
+    @app.get("/chapters/<int:chapter_id>/pdf")
+    def chapter_pdf(chapter_id: int):
+        chapter = db.get_chapter(chapter_id)
+        path = chapter_pdf_path(cfg, chapter_id)
+        if not chapter.has_pdf or not path.is_file():
+            abort(404)
+        return send_file(
+            path,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=download_name(chapter.course_name, chapter.number, chapter.title),
+        )
+
+    @app.get("/figures/<int:figure_id>.png")
+    def figure_image(figure_id: int):
+        figure = db.get_figure(figure_id)
+        path = figure_path(cfg, figure.chapter_id, figure.id)
+        if not path.is_file():
+            abort(404)
+        return send_file(path, mimetype="image/png", max_age=3600)
+
+    @app.post("/figures/<int:figure_id>/delete")
+    def figure_delete(figure_id: int):
+        figure = db.get_figure(figure_id)
+        figure_path(cfg, figure.chapter_id, figure.id).unlink(missing_ok=True)
+        db.delete_figure(figure_id)
+        return redirect(url_for("summary_page", chapter_id=figure.chapter_id))
+
     @app.post("/chapters/<int:chapter_id>/resummarize")
     def chapter_resummarize(chapter_id: int):
         db.get_chapter(chapter_id)
@@ -388,6 +453,7 @@ def create_app(
 
     @app.post("/chapters/<int:chapter_id>/delete")
     def chapter_delete(chapter_id: int):
+        refresh_chapter_pdf(chapter_id)
         db.delete_chapter(chapter_id)
         flash("Chapter and its summary deleted.", "ok")
         return redirect(url_for("index"))
@@ -430,7 +496,9 @@ def create_app(
                 pages, {n: r.title for n, r in readings.items()}, db.get_book_outline(book.id)
             )
             rows = [{"found": f, "reading": readings[f.number]} for f in found]
-        return render_template("book.html", book=book, rows=rows, today=today_fn())
+        pdf = book_path(cfg, book.id)
+        pdf_mb = max(round(pdf.stat().st_size / 1024 / 1024, 1), 0.1) if pdf.is_file() else None
+        return render_template("book.html", book=book, rows=rows, today=today_fn(), pdf_mb=pdf_mb)
 
     @app.get("/books/<int:book_id>/check")
     def book_check(book_id: int):
@@ -474,14 +542,19 @@ def create_app(
             chapters.append((number, start, end, text))
         if not chapters:
             raise ReadcueError("Tick at least one chapter to create.")
+        source = book_path(cfg, book.id)  # absent for a book read before PDFs were kept
         for number, start, end, text in chapters:
             reading = db.find_reading(book.course_id, number)
-            db.save_chapter(
+            chapter_id = db.save_chapter(
                 book.course_id,
                 number,
                 reading.title if reading else "",
                 text,
                 f"{book.name} pp. {start}-{end}",
+            )
+            refresh_chapter_pdf(
+                chapter_id,
+                (lambda dest, s=start, e=end: slice_pdf(source, s, e, dest)) if source.is_file() else None,
             )
         wake.set()
         flash(f"Created {len(chapters)} chapter{'s' if len(chapters) != 1 else ''} from {book.name}.", "ok")

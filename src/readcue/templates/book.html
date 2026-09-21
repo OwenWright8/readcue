@@ -78,10 +78,11 @@
   {% endif %}
 
   <div class="actions" style="margin-top:28px">
-    <form method="post" action="{{ url_for('book_delete', book_id=book.id) }}" data-confirm="Delete this textbook? Chapters already created from it are kept.">
+    <form method="post" action="{{ url_for('book_delete', book_id=book.id) }}" data-confirm="Delete this textbook? Chapters already created from it are kept, along with their PDFs.">
       <button class="btn btn-ghost btn-danger">{{ icon('trash', 15) }} Delete textbook</button>
     </form>
   </div>
+  {% if pdf_mb is not none %}<p class="hint">The original PDF ({{ pdf_mb }} MB) is kept so you can create more chapters later, and each chapter gets its own PDF to download. Deleting the textbook frees that space; chapters already created keep theirs.</p>{% endif %}
   {% endif %}
 </div>
 {% endblock %}

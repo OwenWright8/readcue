@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import base64
 import logging
 
 import anthropic
 
 from ..config import Config
 from ..errors import LLMError
+from .base import Image
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +30,7 @@ class AnthropicProvider:
     name = "anthropic"
     # 1M-token context; ~600k characters leaves ample room for the prompt and the reply.
     max_input_chars = 600_000
+    supports_images = True
 
     def __init__(self, cfg: Config):
         self.model = cfg.anthropic_model
@@ -39,19 +42,42 @@ class AnthropicProvider:
     def label(self) -> str:
         return f"anthropic:{self.model}"
 
-    def complete(self, system: str, user: str, *, json_mode: bool = False, schema: dict | None = None) -> str:
+    def complete(
+        self,
+        system: str,
+        user: str,
+        *,
+        json_mode: bool = False,
+        schema: dict | None = None,
+        images: list[Image] | None = None,
+    ) -> str:
         if schema is not None:
             try:
-                return self._text(self._send(system, user, schema))
+                return self._text(self._send(system, user, schema, images))
             except (
                 _StructuredRejected
             ) as e:  # e.g. a model without structured outputs: fall back to plain JSON
                 log.warning(
                     "Claude rejected structured outputs for %s (%s); asking for plain JSON", self.model, e
                 )
-        return self._text(self._send(system, user, None))
+        return self._text(self._send(system, user, None, images))
 
-    def _send(self, system: str, user: str, schema: dict | None):
+    @staticmethod
+    def _content(user: str, images: list[Image] | None):
+        """A plain string, or (with images) each labelled image followed by the text."""
+        if not images:
+            return user
+        blocks: list[dict] = []
+        for label, png in images:
+            blocks.append({"type": "text", "text": label})
+            data = base64.standard_b64encode(png).decode("ascii")
+            blocks.append(
+                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": data}}
+            )
+        blocks.append({"type": "text", "text": user})
+        return blocks
+
+    def _send(self, system: str, user: str, schema: dict | None, images: list[Image] | None = None):
         extra = {}
         if schema is not None:
             # Constrained decoding: the reply is guaranteed to be valid JSON matching the schema.
@@ -61,7 +87,7 @@ class AnthropicProvider:
                 model=self.model,
                 max_tokens=self.max_tokens,
                 system=system,
-                messages=[{"role": "user", "content": user}],
+                messages=[{"role": "user", "content": self._content(user, images)}],
                 **extra,
             )
         except anthropic.AuthenticationError as e:

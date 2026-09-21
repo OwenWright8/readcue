@@ -99,7 +99,8 @@ def process_book(db: Database, cfg: Config, book: Book, stop: threading.Event) -
 
     note = f"{unread} pages had no text and OCR isn't installed, so they were skipped." if unread else ""
     db.finish_book(book.id, note)
-    path.unlink(missing_ok=True)  # the page texts are all that's needed from here on
+    # The PDF is kept: chapters cut from it get their own PDF, and more can be split later. Deleting the
+    # textbook removes it.
     log.info("Finished reading %s (%d pages)", book.name, total)
 
 

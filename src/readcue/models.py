@@ -14,6 +14,7 @@ class Course:
     # "now": summarize each chapter as soon as it's added.
     summary_mode: str = "scheduled"
     notify_on_summary: bool = True  # Pushover ping when a summary is complete
+    include_figures: bool = False  # have Claude pick and clip the chapter's key figures (extra tokens)
 
 
 @dataclass(frozen=True)
@@ -93,7 +94,17 @@ class Chapter:
     summary_error: str = ""
     summarize_now: bool = False  # user asked for it; skips the wait for the due-date window
     summary_mode: str = "scheduled"  # the course's setting
+    has_pdf: bool = False  # the chapter's original pages are stored and can be downloaded
     text: str = ""  # only loaded when explicitly requested
+
+
+@dataclass(frozen=True)
+class Figure:
+    id: int
+    chapter_id: int
+    page: int  # page of the chapter's own PDF
+    caption: str
+    why: str
 
 
 @dataclass
@@ -133,6 +144,7 @@ class Reading:
     summarize_now: bool = False
     summary_mode: str = "scheduled"
     notify_on_summary: bool = True
+    has_pdf: bool = False
     notifications: frozenset[str] = frozenset()
 
     @property

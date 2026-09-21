@@ -334,6 +334,13 @@ details.more > .body { padding: 2px 0 16px; }
 .keypoints { list-style: none; counter-reset: kp; margin: 0; padding: 0; display: grid; gap: 10px; }
 .keypoints li { counter-increment: kp; display: flex; gap: 14px; padding: 14px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow-sm); line-height: 1.55; }
 .keypoints li::before { content: counter(kp); flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 13px; }
+.figures { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.figure-card { margin: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow-sm); }
+.figure-card img { display: block; width: 100%; height: auto; max-height: 420px; object-fit: contain; border-radius: 8px; background: #fff; border: 1px solid var(--line); }
+.figure-card figcaption { display: grid; gap: 3px; font-size: 14px; }
+.figure-card figcaption span { color: var(--muted); }
+.figure-card figcaption small { color: var(--faint); font-size: 12px; }
+.figure-card form { margin: 0; align-self: flex-start; }
 .glossary-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 30px 0 12px; }
 .glossary-head input { width: 220px; }
 .glossary { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }

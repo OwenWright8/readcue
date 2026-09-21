@@ -55,12 +55,37 @@ Upload the book once instead of splitting it by hand:
    them, otherwise from a "Chapter 7" heading (or the chapter's title) near the top of a page. It skips the table of
    contents and ignores mentions like "see Chapter 7". Chapter 7 runs to the page before chapter 8 opens, or before an
    appendix, glossary or index.
-4. You get a review screen with each chapter's page range, page count and a peek at its first page. Fix anything that
-   looks off (a warning marks chapters whose end it couldn't find), untick what you don't want, and **Create chapters**.
-   They then follow your summarize-now or scheduled setting.
+4. You get a review screen with each chapter's page range, page count and a peek at its first page. Click
+   **Check pages** on a chapter to see its **first page**, its **last page** and the pages **just before and after**,
+   and to nudge either end a page at a time. It flags what looks off: the chapter's heading is on the page before,
+   the page after isn't the start of a new chapter, the range runs into another chapter, or pages have no readable
+   text. Fix anything, untick what you don't want, and **Create chapters**. They then follow your summarize-now or
+   scheduled setting.
 
-The book's text stays stored, so you can return later and create more chapters from it. Page numbers on this screen
+The book's text and PDF stay stored, so you can return later and create more chapters from it. Delete the textbook
+to free the space (the original PDF can be large); chapters already created keep theirs. Page numbers on this screen
 are the PDF's own page numbers (the cover is page 1), not the numbers printed on the pages.
+
+## Downloading a chapter as a PDF
+
+Every chapter that came from a PDF (cut from a textbook, or uploaded as a PDF or several) keeps its original pages as a
+small PDF of its own. **Chapter PDF** on the chapter page, or the download icon on its dashboard row, gives you just those
+pages. Chapters from Word files, text, pasted text or photos have no pages to give back, so no download button.
+
+## Key figures in summaries
+
+Turn on **Clip key figures into summaries** (the sliders button on a course) and, after each summary is written, Claude
+looks at the chapter's pages together with the summary and picks the few figures that are *especially important*:
+a diagram, graph or table the explanation depends on, not decoration. readcue clips each out of the page and shows it in
+the summary with a caption, why it matters, and the page it came from. Remove any you don't want.
+
+- **Claude only.** Local Ollama models can't look at pictures, so the switch is disabled with Ollama.
+- **Needs the chapter's original pages**, so it works for chapters from a textbook or a PDF.
+- **It costs extra:** each page image is roughly 1,000 tokens, so a 30-page chapter adds a few cents with Sonnet.
+  Pages are looked at up to 60 per chapter, and at most 4 figures are kept.
+- The boxes a vision model draws are approximate, so clips are padded a little. A clip can still cut a label or include
+  too much; that's what **Remove** is for. Figures appear a moment after the summary itself, and are redone if you
+  Regenerate.
 
 ## Reading scans and photos (OCR)
 
