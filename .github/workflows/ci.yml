@@ -43,6 +43,8 @@ jobs:
   docker:
     name: Docker image
     runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/owenwright8/readcue:ci
     steps:
       - uses: actions/checkout@v7
 
@@ -50,47 +52,80 @@ jobs:
         run: |
           cp .env.example .env
           docker compose config -q
-          docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml config -q
+          docker compose -f docker-compose.yml -f docker-compose.build.yml config -q
 
       - name: Build
-        run: docker build --build-arg VERSION=ci -t readcue:ci .
+        run: docker build --build-arg VERSION=ci -t "$IMAGE" .
 
       - name: Runs as an unprivileged user with OCR tools present
         run: |
-          test "$(docker run --rm --entrypoint id readcue:ci -u)" != "0"
-          docker run --rm --entrypoint tesseract readcue:ci --version
-          docker run --rm --entrypoint pdftoppm readcue:ci -v
-          docker run --rm readcue:ci --version
+          test "$(docker run --rm --entrypoint id "$IMAGE" -u)" != "0"
+          docker run --rm --entrypoint tesseract "$IMAGE" --version
+          docker run --rm --entrypoint pdftoppm "$IMAGE" -v
+          docker run --rm "$IMAGE" --version
 
       - name: OCR works inside the image
-        run: docker run --rm -v "$PWD/scripts:/scripts:ro" --entrypoint python readcue:ci /scripts/smoke_ocr.py
+        run: docker run --rm -v "$PWD/scripts:/scripts:ro" --entrypoint python "$IMAGE" /scripts/smoke_ocr.py
 
       - name: Refuses to run open to the network without a password
         run: |
-          if docker run --rm -e READCUE_BIND=0.0.0.0 readcue:ci serve --host 0.0.0.0 2> refusal.txt; then
+          if docker run --rm -e READCUE_BIND=0.0.0.0 "$IMAGE" serve --host 0.0.0.0 2> refusal.txt; then
             echo "expected the container to refuse to start"; exit 1
           fi
           cat refusal.txt
           grep -q "no login" refusal.txt
 
-      - name: Starts, becomes healthy and serves the UI
+      # Uses only docker-compose.yml + .env, like a NAS with no source checkout. --pull never makes it use the
+      # image built above (READCUE_VERSION=ci).
+      - name: docker-compose.yml starts a healthy, hardened container
+        env:
+          READCUE_VERSION: ci
         run: |
-          docker run -d --name readcue -p 127.0.0.1:8080:8080 -e READCUE_BIND=127.0.0.1 readcue:ci
+          docker compose up -d --pull never readcue
+          id=$(docker compose ps -q readcue)
           for i in $(seq 1 30); do
-            status=$(docker inspect --format '{{.State.Health.Status}}' readcue)
+            status=$(docker inspect --format '{{.State.Health.Status}}' "$id")
             echo "health: $status"
             [ "$status" = "healthy" ] && break
             sleep 2
           done
           test "$status" = "healthy"
-          curl -fsS http://127.0.0.1:8080/healthz
-          echo
+          curl -fsS http://127.0.0.1:8080/healthz; echo
           curl -fsS http://127.0.0.1:8080/ | grep -q "set up your first course"
           curl -fsSI http://127.0.0.1:8080/ | grep -i "content-security-policy"
-          curl -fsS http://127.0.0.1:8080/static/style.css | head -c 80
-          echo
-          docker exec readcue readcue backup --to /tmp/ci-backup.db
+          curl -fsS http://127.0.0.1:8080/static/style.css | head -c 80; echo
+          test "$(docker compose exec -T readcue id -u)" = "1000"
+          docker inspect --format '{{json .HostConfig.CapDrop}}' "$id" | grep -q ALL
+          docker inspect --format '{{json .HostConfig.SecurityOpt}}' "$id" | grep -q no-new-privileges
+          docker compose exec -T readcue readcue backup --to /tmp/ci-backup.db
+          docker compose down -v
+
+      # A NAS keeps data in a shared folder owned by some other user, and exposes the app on the LAN.
+      - name: NAS-style setup (bind-mounted data folder, custom user, password, exposed)
+        env:
+          READCUE_VERSION: ci
+          READCUE_PORT: "8081"
+          READCUE_BIND: 0.0.0.0
+          READCUE_PASSWORD: correct-horse
+        run: |
+          mkdir -p nas-data
+          export READCUE_DATA="$PWD/nas-data" READCUE_UID="$(id -u)" READCUE_GID="$(id -g)"
+          docker compose -p nas up -d --pull never readcue
+          id=$(docker compose -p nas ps -q readcue)
+          for i in $(seq 1 30); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' "$id")
+            [ "$status" = "healthy" ] && break
+            sleep 2
+          done
+          test "$status" = "healthy"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8081/)" = "401"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -u readcue:correct-horse http://127.0.0.1:8081/)" = "200"
+          test -f nas-data/readcue.db
+          test "$(stat -c %u nas-data/readcue.db)" = "$(id -u)"
+          docker compose -p nas down
 
       - name: Logs
         if: always()
-        run: docker logs readcue || true
+        run: |
+          docker compose logs || true
+          docker compose -p nas logs || true

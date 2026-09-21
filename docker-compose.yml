@@ -1,23 +1,52 @@
+# readcue: self-hosted reading assistant.
+#
+# This file is all you need: it pulls the published image, so there is no source code to download.
+#   1. Save this file and a `.env` (start from .env.example) in the same folder.
+#   2. docker compose up -d
+#
+# To build the image from a source checkout instead, add the build override:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+
 services:
   readcue:
-    build:
-      context: .
-      args:
-        EXTRA_OCR_PACKAGES: ${EXTRA_OCR_PACKAGES:-}
-    image: readcue:latest
+    image: ghcr.io/owenwright8/readcue:${READCUE_VERSION:-latest}
     init: true # proper SIGTERM handling, so `docker compose stop` is instant
     restart: unless-stopped
     ports:
-      # Localhost only by default. Set READCUE_BIND=0.0.0.0 in .env to reach it from other devices
-      # (and set READCUE_PASSWORD when you do).
+      # Localhost only by default. To reach it from other devices (a NAS, a phone) set READCUE_BIND=0.0.0.0
+      # AND READCUE_PASSWORD in .env; the app refuses to start on the network without a password.
       - "${READCUE_BIND:-127.0.0.1}:${READCUE_PORT:-8080}:8080"
-    env_file:
-      - path: .env
-        required: false
+    # Runs as this user. Only change it when READCUE_DATA is a folder owned by someone else (common on a NAS);
+    # with the default Docker volume leave it alone.
+    user: "${READCUE_UID:-1000}:${READCUE_GID:-1000}"
     environment:
+      # Every setting is passed through explicitly (no env_file), so this works on older Compose versions and
+      # in NAS/Portainer UIs. Empty means "use the default". See .env.example and docs/deployment.md.
       TZ: ${TZ:-UTC} # reminders go out at READCUE_NOTIFY_TIME in this timezone
-      # The app reads this to decide whether a password is required: exposed beyond localhost => it must be set.
-      READCUE_BIND: ${READCUE_BIND:-127.0.0.1}
+      READCUE_BIND: ${READCUE_BIND:-127.0.0.1} # the app reads this to decide whether a password is required
+      READCUE_PASSWORD: ${READCUE_PASSWORD:-}
+      READCUE_USERNAME: ${READCUE_USERNAME:-}
+      READCUE_BASE_URL: ${READCUE_BASE_URL:-}
+      READCUE_INSECURE_NO_AUTH: ${READCUE_INSECURE_NO_AUTH:-}
+      READCUE_LOG_LEVEL: ${READCUE_LOG_LEVEL:-}
+      READCUE_LLM_PROVIDER: ${READCUE_LLM_PROVIDER:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      ANTHROPIC_MAX_TOKENS: ${ANTHROPIC_MAX_TOKENS:-}
+      OLLAMA_HOST: ${OLLAMA_HOST:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
+      OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-}
+      OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      PUSHOVER_APP_TOKEN: ${PUSHOVER_APP_TOKEN:-}
+      PUSHOVER_USER_KEY: ${PUSHOVER_USER_KEY:-}
+      PUSHOVER_DEVICE: ${PUSHOVER_DEVICE:-}
+      PUSHOVER_PRIORITY: ${PUSHOVER_PRIORITY:-}
+      READCUE_SUMMARIZE_DAYS_BEFORE: ${READCUE_SUMMARIZE_DAYS_BEFORE:-}
+      READCUE_NOTIFY_DAYS_BEFORE: ${READCUE_NOTIFY_DAYS_BEFORE:-}
+      READCUE_NOTIFY_TIME: ${READCUE_NOTIFY_TIME:-}
+      READCUE_CHECK_INTERVAL: ${READCUE_CHECK_INTERVAL:-}
+      READCUE_OCR_LANG: ${READCUE_OCR_LANG:-}
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     stop_grace_period: 20s
@@ -27,7 +56,10 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway" # lets the container reach an Ollama running on the host
     volumes:
-      - readcue-data:/data
+      # A Docker-managed volume by default. To keep the data in a folder you can see and back up (a NAS shared
+      # folder, say), set READCUE_DATA to its absolute path, e.g. /volume1/docker/readcue, and READCUE_UID/GID
+      # to the folder's owner.
+      - ${READCUE_DATA:-readcue-data}:/data
 
   # Optional self-hosted LLM. Enable with `docker compose --profile ollama up -d`
   # (or COMPOSE_PROFILES=ollama in .env), then pull a model:

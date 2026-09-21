@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- `docker-compose.yml` now pulls the published image, so a NAS or server needs only that file and a `.env`, with no
+  source checkout. The old build-from-source setup moved to the opt-in `docker-compose.build.yml` override. The
+  `docker-compose.prebuilt.yml` override is gone.
+- Every setting is passed through the compose `environment:` block instead of `env_file`, so it works on older
+  Compose versions and in NAS/Portainer UIs.
+
+### Added
+- `READCUE_DATA` (keep the data in a folder such as a NAS share) and `READCUE_UID`/`READCUE_GID` (run as that
+  folder's owner) in the compose file.
+- A NAS section in `docs/deployment.md`, and CI that starts the compose file itself, including a NAS-style bind mount
+  with a custom user.
+
 ## [1.0.0] - 2026-09-20
 
 First release.

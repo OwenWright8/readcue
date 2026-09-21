@@ -20,15 +20,18 @@ with one setting.
 
 ## Quick start
 
-Requires Docker with Compose v2.24 or newer.
+Requires Docker with Compose v2. You need only two files, with no source code:
 
 ```bash
-cp .env.example .env      # add ANTHROPIC_API_KEY and your Pushover keys
-docker compose up -d --build
+mkdir readcue && cd readcue
+curl -O https://raw.githubusercontent.com/OwenWright8/readcue/main/docker-compose.yml
+curl -o .env https://raw.githubusercontent.com/OwenWright8/readcue/main/.env.example
+# edit .env: add ANTHROPIC_API_KEY and your Pushover keys
+docker compose up -d
 ```
 
-Open <http://localhost:8080>. To use the published image instead of building, or to put it on your network
-with HTTPS, see [docs/deployment.md](docs/deployment.md).
+Open <http://localhost:8080>. For a **NAS**, building from source, or HTTPS, see
+[docs/deployment.md](docs/deployment.md).
 
 1. **Add a course** and **import its syllabus** (PDF, DOCX, TXT/MD, scans or photos, or pasted text). The
    AI pulls out the chapter readings and due dates. You review and edit them, then choose whether

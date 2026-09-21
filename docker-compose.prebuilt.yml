@@ -1,8 +1,0 @@
-# Use the published image instead of building from source:
-#   docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml up -d
-# Pin a release with READCUE_VERSION=1.0.0 in .env (default: latest). If the package is private,
-# `docker login ghcr.io` first.
-services:
-  readcue:
-    image: ghcr.io/owenwright8/readcue:${READCUE_VERSION:-latest}
-    build: !reset null

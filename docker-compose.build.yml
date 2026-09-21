@@ -1,0 +1,10 @@
+# Build the image from this source checkout instead of pulling the published one:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+# Needed for extra OCR languages (set EXTRA_OCR_PACKAGES, e.g. "tesseract-ocr-spa") or an unusual CPU.
+services:
+  readcue:
+    build:
+      context: .
+      args:
+        EXTRA_OCR_PACKAGES: ${EXTRA_OCR_PACKAGES:-}
+    image: readcue:local
